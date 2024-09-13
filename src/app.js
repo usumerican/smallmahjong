@@ -44,6 +44,7 @@ on(window, 'DOMContentLoaded', () => {
   let roundSelectRect, roundOptionW;
   let startButtonRect, reloadButtonRect, sourceButtonRect;
 
+  const thinkTime = 200;
   let match;
   let playerPositions;
   let currentTileIndex;
@@ -103,15 +104,35 @@ on(window, 'DOMContentLoaded', () => {
       }
       context.fillStyle = tile ? (disabled ? '#ccc' : selected ? '#ff0' : '#fff') : '#fd0';
       context.fillRect(-w / 2, -h / 2, w, h);
-      if (tile) {
-        context.font = Math.ceil(w * 0.5) + 'px "Courier New", monospace';
-        const suit = getTileSuit(tile);
-        context.fillStyle = ['#f00', '#090', '#00f'][suit - 1];
-        context.textAlign = 'center';
-        fillDoubleText(context, ['▲', '■', '◉'][suit - 1], getTileRank(tile), 0, 0);
-      }
       context.strokeStyle = '#000';
       context.strokeRect(-w / 2, -h / 2, w, h);
+      if (tile) {
+        const suit = getTileSuit(tile);
+        context.fillStyle = ['#f00', '#090', '#00f'][suit - 1];
+        context.font = Math.ceil(w * 0.5) + 'px "Verdana", sans-serif';
+        context.fillText(getTileRank(tile), 0, 0.2 * h);
+        if (suit === 1) {
+          context.beginPath();
+          context.moveTo(0, -0.35 * h);
+          context.lineTo(0.15 * h, -0.05 * h);
+          context.lineTo(-0.15 * h, -0.05 * h);
+          context.closePath();
+          context.fill();
+        } else if (suit === 2) {
+          context.fillRect(-0.15 * h, -0.35 * h, 0.3 * h, 0.3 * h);
+        } else if (suit === 3) {
+          context.beginPath();
+          context.arc(0, -0.2 * h, 0.1 * h, 0, 2 * Math.PI);
+          context.closePath();
+          context.fill();
+          context.strokeStyle = context.fillStyle;
+          context.lineWidth = 0.03 * h;
+          context.beginPath();
+          context.arc(0, -0.2 * h, 0.15 * h, 0, 2 * Math.PI);
+          context.closePath();
+          context.stroke();
+        }
+      }
     } finally {
       context.restore();
     }
@@ -532,6 +553,7 @@ on(window, 'DOMContentLoaded', () => {
       }
     }
     if (!currentGame.stockTiles.length) {
+      currentGame.updatePlaces();
       scene = FINISHED;
       await showMessage(-1, 'Draw');
       return;
@@ -539,7 +561,7 @@ on(window, 'DOMContentLoaded', () => {
     updateCanvas();
     setTimeout(() => {
       doDraw();
-    }, 100);
+    }, thinkTime);
   }
 
   function doDraw() {
@@ -555,7 +577,7 @@ on(window, 'DOMContentLoaded', () => {
       } else {
         setTimeout(() => {
           doDiscard(tile);
-        }, 100);
+        }, thinkTime);
       }
       return;
     }
@@ -569,7 +591,7 @@ on(window, 'DOMContentLoaded', () => {
             currentBase.setReaching(true);
           }
           doDiscard(t);
-        }, 100);
+        }, thinkTime);
       }
       return;
     }
@@ -589,9 +611,11 @@ on(window, 'DOMContentLoaded', () => {
     match.dealCount = dealCounts[settings.dealSelectedIndex];
     match.roundCount = roundCounts[settings.roundSelectedIndex];
     match.startGame();
-    playerPositions = [...Array(match.playerCount).keys()].map(
-      (i) => (i - match.manualPlayerIndex + match.playerCount) % match.playerCount,
-    );
+    playerPositions = Array(match.playerCount);
+    for (let i = 0; i < match.playerCount; i++) {
+      playerPositions[(match.manualPlayerIndex + i) % match.playerCount] =
+        match.playerCount === 2 ? i * 2 : match.playerCount === 3 ? Math.floor(i * 1.5) : i;
+    }
     localStorage.setItem(settingsKey, JSON.stringify(settings));
     doResize();
     doStarting();

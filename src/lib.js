@@ -616,6 +616,15 @@ export class Game {
     }
     return minTiles[randomInt(minTiles.length)];
   }
+
+  updatePlaces() {
+    const placeBases = this.bases.slice().sort((a, b) => {
+      return b.matchScore + b.gameScore - a.matchScore - a.gameScore || a.playerIndex - b.playerIndex;
+    });
+    for (let i = 0; i < placeBases.length; i++) {
+      placeBases[i].place = i + 1;
+    }
+  }
 }
 
 const PLAYER_NAMES = ['You', 'Alice', 'Bob', 'Carol'];
@@ -721,12 +730,7 @@ export class Match {
       const loserBase = currentGame.bases[loserBaseIndex];
       loserBase.gameScore = -winnerScore;
     }
-    const placeBases = currentGame.bases.slice().sort((a, b) => {
-      return b.matchScore + b.gameScore - a.matchScore - a.gameScore || a.playerIndex - b.playerIndex;
-    });
-    for (let i = 0; i < placeBases.length; i++) {
-      placeBases[i].place = i + 1;
-    }
+    currentGame.updatePlaces();
   }
 
   isFinalGame() {
