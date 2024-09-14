@@ -3,6 +3,7 @@ dist/
 node_modules/
 tmp/
 
+!.github/
 !.editorconfig
 !.gitignore
 !.prettierrc.json

@@ -25,9 +25,12 @@ function isRectContains([rx, ry, rw, rh], [px, py]) {
 on(window, 'DOMContentLoaded', () => {
   const canvas = document.querySelector('canvas');
   const matrix = [1, 0, 0, 1, 0, 0];
-  let lastFrameTime;
+  const stageR = 360;
   let stageX, stageY, stageW, stageH;
-  let lineH;
+  let lastFrameTime;
+
+  const lineH = stageR / 12;
+  const normalFont = Math.floor(lineH * 0.8) + 'px sans-serif';
 
   const HOME = 0;
   const PLAYING = 1;
@@ -39,10 +42,6 @@ on(window, 'DOMContentLoaded', () => {
   const playerCounts = [1, 2, 3, 4];
   const dealCounts = [4, 7, 10, 13];
   const roundCounts = [0, 1, 2, 4];
-  let playerSelectRect, playerOptionW;
-  let dealSelectRect, dealOptionW;
-  let roundSelectRect, roundOptionW;
-  let startButtonRect, reloadButtonRect, sourceButtonRect;
 
   const thinkTime = 200;
   let match;
@@ -109,7 +108,7 @@ on(window, 'DOMContentLoaded', () => {
       if (tile) {
         const suit = getTileSuit(tile);
         context.fillStyle = ['#f00', '#090', '#00f'][suit - 1];
-        context.font = Math.ceil(w * 0.5) + 'px "Verdana", sans-serif';
+        context.font = Math.floor(0.5 * w) + 'px "Verdana", sans-serif';
         context.fillText(getTileRank(tile), 0, 0.2 * h);
         if (suit === 1) {
           context.beginPath();
@@ -142,8 +141,9 @@ on(window, 'DOMContentLoaded', () => {
     const cellW = 3 * lineH;
     const gridX = ((1 - match.playerCount) * cellW) / 2;
     const gameCount = match.games.length;
-    let y = -((3 + gameCount) * lineH) / 2;
-    context.font = Math.ceil(lineH * 0.8) + 'px sans-serif';
+    let y = -((3.5 + gameCount) * lineH) / 2;
+    context.fillText('Results', 0, y);
+    y += lineH;
     context.textAlign = 'right';
     for (let i = 0; i < match.playerCount; i++) {
       context.fillText(match.players[i].name, gridX + cellW * (1 + i), y);
@@ -170,7 +170,6 @@ on(window, 'DOMContentLoaded', () => {
     const handCount = currentGame.winningHands.length;
     const h = rackTileH + (5 + handCount + match.playerCount) * lineH;
     let y = -h / 2 + lineH;
-    context.font = Math.ceil(lineH * 0.8) + 'px sans-serif';
     context.fillStyle = 'white';
     context.fillText(
       formatRoundGame() +
@@ -212,6 +211,16 @@ on(window, 'DOMContentLoaded', () => {
     }
   }
 
+  const playerSelectRect = [0, -4 * lineH, 8 * lineH, 2 * lineH];
+  const playerOptionW = playerSelectRect[2] / playerCounts.length;
+  const dealSelectRect = [0, -lineH, 8 * lineH, 2 * lineH];
+  const dealOptionW = dealSelectRect[2] / dealCounts.length;
+  const roundSelectRect = [0, 2 * lineH, 8 * lineH, 2 * lineH];
+  const roundOptionW = roundSelectRect[2] / roundCounts.length;
+  const startButtonRect = [-5 * lineH, 5 * lineH, 10 * lineH, 3 * lineH];
+  const reloadButtonRect = [-11 * lineH, 5 * lineH, 5 * lineH, 3 * lineH];
+  const sourceButtonRect = [6 * lineH, 5 * lineH, 5 * lineH, lineH * 3];
+
   function renderHome(context) {
     const labelX = -4 * lineH;
     const playerCy = getRectCenterY(playerSelectRect);
@@ -251,14 +260,14 @@ on(window, 'DOMContentLoaded', () => {
     context.strokeRect(...sourceButtonRect);
     context.fillText('Source', getRectCenterX(sourceButtonRect), getRectCenterY(sourceButtonRect));
 
-    context.font = Math.ceil(lineH * 2) + 'px sans-serif';
+    context.font = Math.floor(lineH * 2) + 'px sans-serif';
     context.fillText('Small Mahjong', 0, -6 * lineH);
   }
 
   function renderCanvas(context) {
     context.fillStyle = '#060';
     context.fillRect(stageX, stageY, stageW, stageH);
-    context.font = Math.ceil(lineH * 0.8) + 'px sans-serif';
+    context.font = normalFont;
     context.textAlign = 'center';
     context.textBaseline = 'middle';
     context.fillStyle = '#fff';
@@ -278,7 +287,7 @@ on(window, 'DOMContentLoaded', () => {
     }
 
     const currentGame = match.getCurrentGame();
-    context.font = Math.ceil(tableTileH * 0.5) + 'px sans-serif';
+    context.font = Math.floor(0.5 * tableTileH) + 'px sans-serif';
     fillDoubleText(context, formatRoundGame(), currentGame.stockTiles.length, 0, tableCy);
     context.strokeRect(...quitButtonRect);
     for (let baseIndex = 0; baseIndex < currentGame.bases.length; baseIndex++) {
@@ -383,7 +392,7 @@ on(window, 'DOMContentLoaded', () => {
     }
 
     if (messageText) {
-      context.font = Math.ceil(lineH * 1.2) + 'px sans-serif';
+      context.font = Math.floor(1.2 * lineH) + 'px sans-serif';
       const messageW = context.measureText(messageText).width + lineH * 2;
       const messageH = lineH * 3;
       const [cx, cy] = messagePoints[messagePosition];
@@ -427,24 +436,13 @@ on(window, 'DOMContentLoaded', () => {
     const canvasRect = canvas.getBoundingClientRect();
     canvas.width = canvasRect.width * devicePixelRatio;
     canvas.height = canvasRect.height * devicePixelRatio;
-    stageW = canvas.width;
-    stageH = canvas.height;
-    stageX = -stageW / 2;
-    stageY = -stageH / 2;
-    lineH = Math.min(stageW / 20, stageH / 20);
-    matrix[0] = matrix[3] = Math.min(canvas.width / stageW, canvas.height / stageH);
+    const scale = (matrix[0] = matrix[3] = Math.min(canvas.width, canvas.height) / (2 * stageR));
     matrix[4] = canvas.width / 2;
     matrix[5] = canvas.height / 2;
-
-    playerSelectRect = [0, -4 * lineH, lineH * 8, lineH * 2];
-    playerOptionW = playerSelectRect[2] / playerCounts.length;
-    dealSelectRect = [0, -lineH, lineH * 8, lineH * 2];
-    dealOptionW = dealSelectRect[2] / dealCounts.length;
-    roundSelectRect = [0, 2 * lineH, lineH * 8, lineH * 2];
-    roundOptionW = roundSelectRect[2] / roundCounts.length;
-    startButtonRect = [-stageW / 4, 5 * lineH, stageW / 2, lineH * 3];
-    reloadButtonRect = [-stageW / 2, 5 * lineH, stageW / 4, lineH * 3];
-    sourceButtonRect = [stageW / 4, 5 * lineH, stageW / 4, lineH * 3];
+    stageW = canvas.width / scale;
+    stageH = canvas.height / scale;
+    stageX = -stageW / 2;
+    stageY = -stageH / 2;
 
     if (match) {
       const tileW = stageW / 15;
