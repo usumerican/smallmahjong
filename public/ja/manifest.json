@@ -1,0 +1,38 @@
+{
+  "name": "ちい麻雀",
+  "short_name": "ちい麻雀",
+  "description": "鳴きなし、字牌なしの簡単麻雀",
+  "start_url": ".",
+  "display": "standalone",
+  "theme_color": "#060",
+  "background_color": "#060",
+  "icons": [
+    {
+      "src": "../icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    },
+    {
+      "src": "../icon512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "screenshots": [
+    {
+      "src": "screenshot_1280_640.png",
+      "sizes": "1280x640",
+      "type": "image/png",
+      "form_factor": "wide",
+      "label": "wide"
+    },
+    {
+      "src": "screenshot_640_1280.png",
+      "sizes": "640x1280",
+      "type": "image/png",
+      "form_factor": "narrow",
+      "label": "narrow"
+    }
+  ]
+}

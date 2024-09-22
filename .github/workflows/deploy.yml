@@ -2,12 +2,12 @@ name: Deploy
 
 on:
   push:
-    tags:
-      - "v*.*.*"
+    branches:
+      - main
   workflow_dispatch:
 
 jobs:
-  release:
+  deploy:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
@@ -27,4 +27,4 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-          command: pages deploy dist --project-name smallmahjong
+          command: pages deploy dist --project-name=smallmahjong --commit-dirty=true

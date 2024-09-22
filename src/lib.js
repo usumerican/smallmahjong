@@ -255,17 +255,17 @@ export const HAND_ALL_MIDDLES = 7;
 export const HAND_ALL_SEQUENCES = 8;
 export const HAND_PURE_DOUBLE_SEQUENCES = 9;
 export const HAND_MIXED_TRIPLE_SEQUENCES = 10;
-export const HAND_PURE_STRAIGHT = 11;
-export const HAND_SEVEN_TWINS = 12;
-export const HAND_ALL_TRIPLETS = 13;
-export const HAND_THREE_CLOSED_TRIPLETS = 14;
-export const HAND_MIXED_TRIPLE_TRIPLETS = 15;
+export const HAND_MIXED_TRIPLE_TRIPLETS = 11;
+export const HAND_PURE_STRAIGHT = 12;
+export const HAND_SEVEN_TWINS = 13;
+export const HAND_ALL_TRIPLETS = 14;
+export const HAND_THREE_CLOSED_TRIPLETS = 15;
 export const HAND_ALL_OUTSIDE = 16;
 export const HAND_TWO_PURE_DOUBLE_SEQUENCES = 17;
 export const HAND_FULL_FLUSH = 18;
-export const HAND_ALL_TERMINALS = 19;
-export const HAND_BLESSING_OF_HEAVEN = 20;
-export const HAND_BLESSING_OF_EARTH = 21;
+export const HAND_BLESSING_OF_HEAVEN = 19;
+export const HAND_BLESSING_OF_EARTH = 20;
+export const HAND_ALL_TERMINALS = 21;
 export const HAND_FOUR_CLOSED_TRIPLETS = 22;
 export const HAND_NINE_GATES = 23;
 
@@ -280,19 +280,19 @@ const HAND_DATA = new Map([
   [HAND_ALL_SEQUENCES, { name: 'All Sequences', score: 1 }],
   [HAND_PURE_DOUBLE_SEQUENCES, { name: 'Pure Double Sequences', score: 1 }],
   [HAND_MIXED_TRIPLE_SEQUENCES, { name: 'Mixed Triple Sequences', score: 2 }],
+  [HAND_MIXED_TRIPLE_TRIPLETS, { name: 'Mixed Triple Triplets', score: 2 }],
   [HAND_PURE_STRAIGHT, { name: 'Pure Straight', score: 2 }],
   [HAND_SEVEN_TWINS, { name: 'Seven twins', score: 2 }],
   [HAND_ALL_TRIPLETS, { name: 'All Triplets', score: 2 }],
   [HAND_THREE_CLOSED_TRIPLETS, { name: 'Three Closed Triplets', score: 2 }],
-  [HAND_MIXED_TRIPLE_TRIPLETS, { name: 'Mixed Triple Triplets', score: 3 }],
   [HAND_ALL_OUTSIDE, { name: 'All Outside', score: 3 }],
-  [HAND_TWO_PURE_DOUBLE_SEQUENCES, { name: 'Pure Double Sequences', score: 3 }],
-  [HAND_FULL_FLUSH, { name: 'Full Flush', score: 0 }],
-  [HAND_ALL_TERMINALS, { name: 'All Terminals', score: 13 }],
-  [HAND_BLESSING_OF_HEAVEN, { name: 'Blessing of Heaven', score: 13 }],
-  [HAND_BLESSING_OF_EARTH, { name: 'Blessing of Earth', score: 13 }],
-  [HAND_FOUR_CLOSED_TRIPLETS, { name: 'Four Closed Triplets', score: 13 }],
-  [HAND_NINE_GATES, { name: 'Nine Gates', score: 13 }],
+  [HAND_TWO_PURE_DOUBLE_SEQUENCES, { name: 'Two Pure Double Sequences', score: 3 }],
+  [HAND_FULL_FLUSH, { name: 'Full Flush', score: 6 }],
+  [HAND_BLESSING_OF_HEAVEN, { name: 'Blessing of Heaven', score: 16 }],
+  [HAND_BLESSING_OF_EARTH, { name: 'Blessing of Earth', score: 16 }],
+  [HAND_ALL_TERMINALS, { name: 'All Terminals', score: 16 }],
+  [HAND_FOUR_CLOSED_TRIPLETS, { name: 'Four Closed Triplets', score: 16 }],
+  [HAND_NINE_GATES, { name: 'Nine Gates', score: 16 }],
 ]);
 
 export function getHandName(hand) {
@@ -309,150 +309,171 @@ export function getHandScore(hand, dealCount) {
 }
 
 export function getHands(readyCounts, winningTile, turnState, reachState, fromStock, stockCount) {
-  const handSet = new Set();
+  const specialHands = [];
+  let maxHands = [];
+  let maxScore = 0;
   for (const combi of generateCombinations(readyCounts)) {
     const winnableTiles = combi[combi.length - 1];
     if (!winnableTiles.includes(winningTile)) {
       continue;
     }
+    const hands = [];
+    let score = 0;
     const readyGroups = combi.slice(0, combi.length - 2);
     if (readyGroups.length === 6) {
-      handSet.add(HAND_SEVEN_TWINS);
-      continue;
-    }
-    const wait = combi[combi.length - 2];
-    if (
-      isGroupSequential(wait) &&
-      !isGroupOutside(wait) &&
-      readyGroups.slice(0, readyGroups.length - 1).every((g) => isGroupSequential(g))
-    ) {
-      handSet.add(HAND_ALL_SEQUENCES);
-    }
-    const winningGroups = [getGroupFromWait(wait, winningTile), ...readyGroups];
-    winningGroups.sort(compareGroups);
-    if (winningGroups.every((g) => isGroupOutside(g))) {
-      handSet.add(HAND_ALL_OUTSIDE);
-    }
-    if (winningGroups.every((g) => isGroupIdentical(g))) {
-      handSet.add(HAND_ALL_TRIPLETS);
-    }
-    const tripletsCount =
-      readyGroups.reduce((c, g) => c + (g.length >= 3 && isGroupIdentical(g) ? 1 : 0), 0) +
-      (fromStock && wait.length === 2 && isGroupIdentical(wait) ? 1 : 0);
-    if (tripletsCount === 3) {
-      handSet.add(HAND_THREE_CLOSED_TRIPLETS);
-    } else if (tripletsCount === 4) {
-      handSet.add(HAND_FOUR_CLOSED_TRIPLETS);
-    }
-    PDS: for (let i = 1; i < winningGroups.length - 1; i++) {
-      if (!compareGroups(winningGroups[i], winningGroups[i + 1])) {
-        for (let j = i + 1; j < winningGroups.length - 1; j++) {
-          if (!compareGroups(winningGroups[j], winningGroups[j + 1])) {
-            handSet.add(HAND_TWO_PURE_DOUBLE_SEQUENCES);
-            break PDS;
+      hands.push(HAND_SEVEN_TWINS);
+      score += getHandScore(HAND_SEVEN_TWINS);
+    } else {
+      const wait = combi[combi.length - 2];
+      if (
+        isGroupSequential(wait) &&
+        !isGroupOutside(wait) &&
+        readyGroups.slice(0, readyGroups.length - 1).every((g) => isGroupSequential(g))
+      ) {
+        hands.push(HAND_ALL_SEQUENCES);
+        score += getHandScore(HAND_ALL_SEQUENCES);
+      }
+      const winningGroups = [getGroupFromWait(wait, winningTile), ...readyGroups];
+      winningGroups.sort(compareGroups);
+      if (winningGroups.every((g) => isGroupOutside(g))) {
+        hands.push(HAND_ALL_OUTSIDE);
+        score += getHandScore(HAND_ALL_OUTSIDE);
+      }
+      if (winningGroups.every((g) => isGroupIdentical(g))) {
+        hands.push(HAND_ALL_TRIPLETS);
+        score += getHandScore(HAND_ALL_TRIPLETS);
+      }
+      const tripletsCount =
+        readyGroups.reduce((c, g) => c + (g.length >= 3 && isGroupIdentical(g) ? 1 : 0), 0) +
+        (fromStock && wait.length === 2 && isGroupIdentical(wait) ? 1 : 0);
+      if (tripletsCount === 3) {
+        hands.push(HAND_THREE_CLOSED_TRIPLETS);
+        score += getHandScore(HAND_THREE_CLOSED_TRIPLETS);
+      } else if (tripletsCount === 4) {
+        specialHands.push(HAND_FOUR_CLOSED_TRIPLETS);
+      }
+      PDS: for (let i = 1; i < winningGroups.length - 1; i++) {
+        if (!compareGroups(winningGroups[i], winningGroups[i + 1])) {
+          for (let j = i + 1; j < winningGroups.length - 1; j++) {
+            if (!compareGroups(winningGroups[j], winningGroups[j + 1])) {
+              hands.push(HAND_TWO_PURE_DOUBLE_SEQUENCES);
+              score += getHandScore(HAND_TWO_PURE_DOUBLE_SEQUENCES);
+              break PDS;
+            }
+          }
+          hands.push(HAND_PURE_DOUBLE_SEQUENCES);
+          score += getHandScore(HAND_PURE_DOUBLE_SEQUENCES);
+          break;
+        }
+      }
+      PS: for (let i = 1; i < winningGroups.length - 2; i++) {
+        const g1 = winningGroups[i];
+        if (isGroupSequential(g1) && getTileRank(g1[0]) === 1) {
+          const s1 = getTileSuit(g1[0]);
+          for (let j = i + 1; j < winningGroups.length - 1; j++) {
+            const g2 = winningGroups[j];
+            if (isGroupSequential(g2) && getTileRank(g2[0]) === 4 && getTileSuit(g2[0]) === s1) {
+              for (let k = j + 1; k < winningGroups.length; k++) {
+                const g3 = winningGroups[k];
+                if (isGroupSequential(g3) && getTileRank(g3[0]) === 7 && getTileSuit(g3[0]) === s1) {
+                  hands.push(HAND_PURE_STRAIGHT);
+                  score += getHandScore(HAND_PURE_STRAIGHT);
+                  break PS;
+                }
+              }
+            }
           }
         }
-        handSet.add(HAND_PURE_DOUBLE_SEQUENCES);
-        break;
       }
-    }
-    PS: for (let i = 1; i < winningGroups.length - 2; i++) {
-      const g1 = winningGroups[i];
-      if (isGroupSequential(g1) && getTileRank(g1[0]) === 1) {
-        const s1 = getTileSuit(g1[0]);
-        for (let j = i + 1; j < winningGroups.length - 1; j++) {
-          const g2 = winningGroups[j];
-          if (isGroupSequential(g2) && getTileRank(g2[0]) === 4 && getTileSuit(g2[0]) === s1) {
-            for (let k = j + 1; k < winningGroups.length; k++) {
-              const g3 = winningGroups[k];
-              if (isGroupSequential(g3) && getTileRank(g3[0]) === 7 && getTileSuit(g3[0]) === s1) {
-                handSet.add(HAND_PURE_STRAIGHT);
-                break PS;
+      MTS: for (let i = 1; i < winningGroups.length - 2; i++) {
+        const g1 = winningGroups[i];
+        if (isGroupSequential(g1) && getTileSuit(g1[0]) === 1) {
+          const r1 = getTileRank(g1[0]);
+          for (let j = i + 1; j < winningGroups.length - 1; j++) {
+            const g2 = winningGroups[j];
+            if (isGroupSequential(g2) && getTileSuit(g2[0]) === 2 && getTileRank(g2[0]) === r1) {
+              for (let k = j + 1; k < winningGroups.length; k++) {
+                const g3 = winningGroups[k];
+                if (isGroupSequential(g3) && getTileSuit(g3[0]) === 3 && getTileRank(g3[0]) === r1) {
+                  hands.push(HAND_MIXED_TRIPLE_SEQUENCES);
+                  score += getHandScore(HAND_MIXED_TRIPLE_SEQUENCES);
+                  break MTS;
+                }
+              }
+            }
+          }
+        }
+      }
+      MTT: for (let i = 1; i < winningGroups.length - 2; i++) {
+        const g1 = winningGroups[i];
+        if (isGroupIdentical(g1) && getTileSuit(g1[0]) === 1) {
+          const r1 = getTileRank(g1[0]);
+          for (let j = i + 1; j < winningGroups.length - 1; j++) {
+            const g2 = winningGroups[j];
+            if (isGroupIdentical(g2) && getTileSuit(g2[0]) === 2 && getTileRank(g2[0]) === r1) {
+              for (let k = j + 1; k < winningGroups.length; k++) {
+                const g3 = winningGroups[k];
+                if (isGroupIdentical(g3) && getTileSuit(g3[0]) === 3 && getTileRank(g3[0]) === r1) {
+                  hands.push(HAND_MIXED_TRIPLE_TRIPLETS);
+                  score += getHandScore(HAND_MIXED_TRIPLE_TRIPLETS);
+                  break MTT;
+                }
               }
             }
           }
         }
       }
     }
-    MTS: for (let i = 1; i < winningGroups.length - 2; i++) {
-      const g1 = winningGroups[i];
-      if (isGroupSequential(g1) && getTileSuit(g1[0]) === 1) {
-        const r1 = getTileRank(g1[0]);
-        for (let j = i + 1; j < winningGroups.length - 1; j++) {
-          const g2 = winningGroups[j];
-          if (isGroupSequential(g2) && getTileSuit(g2[0]) === 2 && getTileRank(g2[0]) === r1) {
-            for (let k = j + 1; k < winningGroups.length; k++) {
-              const g3 = winningGroups[k];
-              if (isGroupSequential(g3) && getTileSuit(g3[0]) === 3 && getTileRank(g3[0]) === r1) {
-                handSet.add(HAND_MIXED_TRIPLE_SEQUENCES);
-                break MTS;
-              }
-            }
-          }
-        }
-      }
-    }
-    MTT: for (let i = 1; i < winningGroups.length - 2; i++) {
-      const g1 = winningGroups[i];
-      if (isGroupIdentical(g1) && getTileSuit(g1[0]) === 1) {
-        const r1 = getTileRank(g1[0]);
-        for (let j = i + 1; j < winningGroups.length - 1; j++) {
-          const g2 = winningGroups[j];
-          if (isGroupIdentical(g2) && getTileSuit(g2[0]) === 2 && getTileRank(g2[0]) === r1) {
-            for (let k = j + 1; k < winningGroups.length; k++) {
-              const g3 = winningGroups[k];
-              if (isGroupIdentical(g3) && getTileSuit(g3[0]) === 3 && getTileRank(g3[0]) === r1) {
-                handSet.add(HAND_MIXED_TRIPLE_TRIPLETS);
-                break MTT;
-              }
-            }
-          }
-        }
-      }
+    if (score > maxScore) {
+      maxHands = hands;
+      maxScore = score;
     }
   }
   if (reachState) {
     if (reachState === REACHED) {
-      handSet.add(HAND_REACH);
+      maxHands.push(HAND_REACH);
     } else if (reachState === DOUBLE_REACHED) {
-      handSet.add(HAND_DOUBLE_REACH);
+      maxHands.push(HAND_DOUBLE_REACH);
     }
     if (turnState === TURN_ONESHOT) {
-      handSet.add(HAND_ONESHOT);
+      maxHands.push(HAND_ONESHOT);
     }
   }
   if (fromStock) {
     if (turnState === TURN_HEAVEN) {
-      handSet.add(HAND_BLESSING_OF_HEAVEN);
+      specialHands.push(HAND_BLESSING_OF_HEAVEN);
     } else if (turnState === TURN_EARTH) {
-      handSet.add(HAND_BLESSING_OF_EARTH);
+      specialHands.push(HAND_BLESSING_OF_EARTH);
     } else {
       if (!stockCount) {
-        handSet.add(HAND_LAST_STOCK);
+        maxHands.push(HAND_LAST_STOCK);
       }
-      handSet.add(HAND_WIN_FROM_STOCK);
+      maxHands.push(HAND_WIN_FROM_STOCK);
     }
   } else {
     if (!stockCount) {
-      handSet.add(HAND_LAST_DISCARD);
+      maxHands.push(HAND_LAST_DISCARD);
     }
   }
   const winningCounts = readyCounts.slice();
   winningCounts[winningTile]++;
   if (winningCounts.every((c, t) => !c || !isTileTerminal(t))) {
-    handSet.add(HAND_ALL_MIDDLES);
+    maxHands.push(HAND_ALL_MIDDLES);
   } else if (winningCounts.every((c, t) => !c || isTileTerminal(t))) {
-    handSet.add(HAND_ALL_TERMINALS);
+    specialHands.push(HAND_ALL_TERMINALS);
   }
   const suit = getTileSuit(winningTile);
   if (readyCounts.every((c, t) => !c || getTileSuit(t) === suit)) {
     if (RANKS.every((rank) => winningCounts[getTile(suit, rank)] >= [3, 1, 1, 1, 1, 1, 1, 1, 3][rank - 1])) {
-      handSet.add(HAND_NINE_GATES);
+      specialHands.push(HAND_NINE_GATES);
     } else {
-      handSet.add(HAND_FULL_FLUSH);
+      maxHands.push(HAND_FULL_FLUSH);
     }
   }
-  return [...handSet].sort((a, b) => a - b);
+  if (specialHands.length) {
+    maxHands = specialHands;
+  }
+  return maxHands.sort((a, b) => a - b);
 }
 
 export class Base {
@@ -465,9 +486,14 @@ export class Base {
     this.reachableMap = new Map();
     this.reachedDiscardedIndex = -1;
     this.winnableSet = new Set();
-    this.matchScore = 0;
-    this.gameScore = 0;
+    this.score = 0;
     this.place = 0;
+    this.gameScore = 0;
+    this.nextPlace = 0;
+  }
+
+  get nextScore() {
+    return this.score + this.gameScore;
   }
 
   isReachable() {
@@ -490,18 +516,30 @@ export class Base {
     return this.reachableMap.has(tile);
   }
 
+  isTileWinnable(tile) {
+    return this.winnableSet.has(tile);
+  }
+
+  canWin() {
+    return (
+      this.concealedTiles.length % 3 === 2 && this.isTileWinnable(this.concealedTiles[this.concealedTiles.length - 1])
+    );
+  }
+
   updateReachable() {
-    if (!this.isReached()) {
-      if (this.winnableSet.has(this.concealedTiles[this.concealedTiles.length - 1])) {
-        this.reachableMap.clear();
-      } else {
-        this.reachableMap = getReachableMap(getTileCounts(this.concealedTiles), getTileCounts(this.discardedTiles));
-      }
+    if (!this.isReached() && !this.canWin()) {
+      this.reachableMap = getReachableMap(getTileCounts(this.concealedTiles), getTileCounts(this.discardedTiles));
       this.reachState = this.reachableMap.size ? REACHABLE : 0;
     }
   }
 
   updateReached() {
+    if (this.reachableMap.size) {
+      this.reachableMap.clear();
+      if (this.reachState === REACHABLE) {
+        this.reachState = 0;
+      }
+    }
     if (this.isReaching()) {
       this.reachState = this.turnState ? DOUBLE_REACHED : REACHED;
       this.reachedDiscardedIndex = this.discardedTiles.length - 1;
@@ -556,7 +594,9 @@ export class Game {
     this.currentBaseIndex = (this.currentBaseIndex + 1) % this.bases.length;
     const currentBase = this.getCurrentBase();
     currentBase.concealedTiles.push(tile);
-    currentBase.updateReachable();
+    if (this.stockTiles.length) {
+      currentBase.updateReachable();
+    }
   }
 
   discardTile(tile) {
@@ -569,14 +609,11 @@ export class Game {
     currentBase.sortTiles();
   }
 
-  canWin(baseIndex, tile) {
-    return this.bases[baseIndex].winnableSet.has(tile);
-  }
-
   think() {
+    const base = this.getCurrentBase();
+    const counts = getTileCounts(base.concealedTiles);
     const scores = Array(TILE_LAST + 1).fill(0);
-    const counts = getTileCounts(this.getCurrentBase().concealedTiles);
-    const rankScores = [0, 1, 2, 3, 4, 5, 4, 3, 2, 1];
+    const rankScores = [0, 1, 2, 3, 4, 4, 4, 3, 2, 1];
     for (const tile of TILES) {
       const rank = getTileRank(tile);
       let score = counts[tile] * 5 + rankScores[rank];
@@ -614,16 +651,8 @@ export class Game {
         }
       }
     }
-    return minTiles[randomInt(minTiles.length)];
-  }
-
-  updatePlaces() {
-    const placeBases = this.bases.slice().sort((a, b) => {
-      return b.matchScore + b.gameScore - a.matchScore - a.gameScore || a.playerIndex - b.playerIndex;
-    });
-    for (let i = 0; i < placeBases.length; i++) {
-      placeBases[i].place = i + 1;
-    }
+    const tile = minTiles[randomInt(minTiles.length)];
+    return [tile, base.isTileReachable(tile)];
   }
 }
 
@@ -663,10 +692,15 @@ export class Match {
       const base = new Base();
       base.playerIndex = i;
       base.turnState = i === 0 ? TURN_HEAVEN : TURN_EARTH;
+      base.place = base.nextPlace = i + 1;
       game.bases.push(base);
     }
     game.dealTiles(this.dealCount);
     this.games.push(game);
+  }
+
+  isLastGame() {
+    return this.games.length >= this.playerCount * this.roundCount;
   }
 
   nextGame() {
@@ -676,12 +710,24 @@ export class Match {
       const lastBase = lastGame.bases[(i + 1) % this.playerCount];
       const nextBase = new Base();
       nextBase.playerIndex = lastBase.playerIndex;
-      nextBase.matchScore = lastBase.matchScore + lastBase.gameScore;
       nextBase.turnState = i === 0 ? TURN_HEAVEN : TURN_EARTH;
+      nextBase.score = lastBase.nextScore;
+      nextBase.place = lastBase.nextPlace;
       nextGame.bases.push(nextBase);
     }
     nextGame.dealTiles(this.dealCount);
     this.games.push(nextGame);
+  }
+
+  drawGame() {
+    const placeBases = this.getCurrentGame()
+      .bases.slice()
+      .sort((a, b) => {
+        return b.nextScore - a.nextScore || a.playerIndex - b.playerIndex;
+      });
+    for (let i = 0; i < placeBases.length; i++) {
+      placeBases[i].nextPlace = i + 1;
+    }
   }
 
   winGame(winnerBaseIndex, loserBaseIndex, winningTile) {
@@ -730,10 +776,12 @@ export class Match {
       const loserBase = currentGame.bases[loserBaseIndex];
       loserBase.gameScore = -winnerScore;
     }
-    currentGame.updatePlaces();
-  }
-
-  isFinalGame() {
-    return this.games.length >= this.playerCount * this.roundCount;
+    const placeBases = currentGame.bases.slice().sort((a, b) => {
+      return b.nextScore - a.nextScore || a.playerIndex - b.playerIndex;
+    });
+    for (let i = 0; i < placeBases.length; i++) {
+      placeBases[i].nextPlace = i + 1;
+    }
+    this.drawGame();
   }
 }

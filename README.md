@@ -1,7 +1,9 @@
 # Small Mahjong
 
-A variant of [Japanese mahjong](https://en.wikipedia.org/wiki/Japanese_mahjong) for beginners
+A simplified [Japanese mahjong](https://en.wikipedia.org/wiki/Japanese_mahjong) without melding and honor tiles
 
-- Suits: ▲ (Angle), ■ (Box), ◉ (Circle)
-- Ranks: 1 to 9
-- Turns: 13 (for js13kGames 2024)
+## Playables in browser
+
+- [English](https://smallmahjong.pages.dev/en/)
+
+- [Japanese](https://smallmahjong.pages.dev/ja/)

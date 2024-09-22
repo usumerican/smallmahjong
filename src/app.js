@@ -1,3 +1,5 @@
+/* globals __APP_VERSION__, T */
+
 import { getHandName, getHandScore, getTileRank, getTileSuit, Match } from './lib';
 
 function on(target, type, listner) {
@@ -22,93 +24,95 @@ function isRectContains([rx, ry, rw, rh], [px, py]) {
   return px >= rx && px < rx + rw && py >= ry && py < ry + rh;
 }
 
-on(window, 'DOMContentLoaded', () => {
+on(window, 'DOMContentLoaded', async () => {
+  const settingsKey = 'smallmahjong';
+  const settings = JSON.parse(localStorage.getItem(settingsKey)) || {};
+
+  const playerCounts = [1, 2, 3, 4];
+  const dealCounts = [4, 7, 10, 13];
+  const roundCounts = [0, 1, 2, 4];
+
+  if (!playerCounts.includes(settings.playerCount)) {
+    settings.playerCount = playerCounts[1];
+  }
+  if (!dealCounts.includes(settings.dealCount)) {
+    settings.dealCount = dealCounts[1];
+  }
+  if (!roundCounts.includes(settings.roundCount)) {
+    settings.roundCount = roundCounts[1];
+  }
+
   const canvas = document.querySelector('canvas');
   const matrix = [1, 0, 0, 1, 0, 0];
   const stageR = 360;
   let stageX, stageY, stageW, stageH;
   let lastFrameTime;
 
-  const lineH = stageR / 12;
-  const normalFont = Math.floor(lineH * 0.8) + 'px sans-serif';
+  const lineH = stageR / 10;
+  const normalFont = Math.floor(lineH * 0.8) + 'px Arial, sans-serif';
+  const selectedColor = '#9ff';
+  const winningColor = '#ff0';
+  const disabledColor = '#ccc';
+  const textColor = '#fff';
 
-  const HOME = 0;
+  const TITLE = 0;
   const PLAYING = 1;
   const FINISHED = 2;
   const HANDS = 3;
   const RESULTS = 4;
   let scene;
 
-  const playerCounts = [1, 2, 3, 4];
-  const dealCounts = [4, 7, 10, 13];
-  const roundCounts = [0, 1, 2, 4];
-
   const thinkTime = 200;
   let match;
   let playerPositions;
-  let currentTileIndex;
-  let manualWinnable;
+  let selectedTileIndex;
 
-  const tileRatio = 1.2;
   const discardedCol = 7;
   let tableTileW, tableTileH;
-  let tableX, tableY, tableW, tableH;
-  let tableCy;
+  let tableX, tableY, tableW, tableH, tableCy;
   let rackTileW, rackTileH;
-  let rackY, rackH;
-  let quitButtonRect;
-  let reachButtonRect;
+  let rackX, rackY, rackW, rackH;
+  let tableButtonRect;
+  let rackButtonRect;
 
   const messageResolveSet = new Set();
   let messageText;
   let messagePosition;
   let messagePoints;
 
-  const settingsKey = 'smallmahjong';
-  const settings = JSON.parse(localStorage.getItem(settingsKey)) || {};
-  if (!(settings.playerSelectedIndex in playerCounts)) {
-    settings.playerSelectedIndex = 1;
-  }
-  if (!(settings.dealSelectedIndex in playerCounts)) {
-    settings.dealSelectedIndex = 1;
-  }
-  if (!(settings.roundSelectedIndex in playerCounts)) {
-    settings.roundSelectedIndex = 1;
-  }
-
   function formatRoundGame() {
-    return match.isFinalGame()
-      ? 'Final'
+    return match.isLastGame()
+      ? T('Last')
       : `${Math.ceil(match.games.length / match.playerCount)} - ${((match.games.length - 1) % match.playerCount) + 1}`;
   }
 
-  function fillDoubleText(context, text1, text2, cx, cy) {
+  function fillDoubleText(context, text1, text2, cx, cy, w) {
     context.save();
     try {
       context.textBaseline = 'bottom';
-      context.fillText(text1, cx, cy);
+      context.fillText(text1, cx, cy, w);
       context.textBaseline = 'top';
-      context.fillText(text2, cx, cy);
+      context.fillText(text2, cx, cy, w);
     } finally {
       context.restore();
     }
   }
 
-  function renderTile(context, tile, cx, cy, w, h, angle, selected, disabled) {
+  function renderTile(context, tile, cx, cy, w, h, angle, tileColor) {
     context.save();
     try {
       context.translate(cx, cy);
       if (angle) {
         context.rotate(angle);
       }
-      context.fillStyle = tile ? (disabled ? '#ccc' : selected ? '#ff0' : '#fff') : '#fd0';
+      context.fillStyle = tile ? tileColor || '#fff' : '#fd0';
       context.fillRect(-w / 2, -h / 2, w, h);
       context.strokeStyle = '#000';
       context.strokeRect(-w / 2, -h / 2, w, h);
       if (tile) {
         const suit = getTileSuit(tile);
         context.fillStyle = ['#f00', '#090', '#00f'][suit - 1];
-        context.font = Math.floor(0.5 * w) + 'px "Verdana", sans-serif';
+        context.font = Math.floor(0.5 * w) + 'px Verdana, sans-serif';
         context.fillText(getTileRank(tile), 0, 0.2 * h);
         if (suit === 1) {
           context.beginPath();
@@ -137,144 +141,171 @@ on(window, 'DOMContentLoaded', () => {
     }
   }
 
+  function strokeHorizon(context, y) {
+    context.beginPath();
+    context.moveTo(-9 * lineH, y);
+    context.lineTo(9 * lineH, y);
+    context.stroke();
+  }
+
   function renderResults(context) {
-    const cellW = 3 * lineH;
-    const gridX = ((1 - match.playerCount) * cellW) / 2;
     const gameCount = match.games.length;
-    let y = -((3.5 + gameCount) * lineH) / 2;
-    context.fillText('Results', 0, y);
-    y += lineH;
+    const lastGame = match.games[match.games.length - 1];
+    const topPlayerIndex = lastGame.bases.find((base) => base.nextPlace === 1).playerIndex;
+    const playerColors = Array(match.playerCount).fill(textColor);
+    playerColors[lastGame.bases.find((base) => base.nextPlace === match.playerCount).playerIndex] = selectedColor;
+    playerColors[topPlayerIndex] = winningColor;
+    const h = (4 + gameCount) * lineH;
+    let y = -0.5 * h + 0.5 * lineH;
+    context.fillText(
+      T(
+        match.playerCount >= 4 && match.roundCount >= 4 && match.manualPlayerIndex === topPlayerIndex
+          ? 'Winner! Winner! Dinner!'
+          : 'Results',
+      ),
+      0,
+      y,
+    );
     context.textAlign = 'right';
+    const cellW = 4 * lineH;
+    const x = -0.5 * (cellW * (0.5 + match.playerCount)) + 0.5 * cellW;
+    y += lineH;
     for (let i = 0; i < match.playerCount; i++) {
-      context.fillText(match.players[i].name, gridX + cellW * (1 + i), y);
+      context.fillStyle = playerColors[i];
+      context.fillText(T(match.players[i].name), x + cellW * (1 + i), y);
     }
     y += lineH;
     for (let i = 0; i < gameCount; i++) {
-      const game = match.games[i];
-      context.fillText(i + 1, gridX, y);
-      for (const base of game.bases) {
-        context.fillText(base.gameScore, gridX + cellW * (1 + base.playerIndex), y);
+      context.fillStyle = textColor;
+      context.fillText(i + 1, x, y);
+      for (const base of match.games[i].bases) {
+        context.fillStyle = playerColors[base.playerIndex];
+        context.fillText(base.gameScore, x + cellW * (1 + base.playerIndex), y);
       }
       y += lineH;
     }
-    context.fillText('Total', gridX, y);
-    for (const base of match.games[match.games.length - 1].bases) {
-      const x = gridX + cellW * (1 + base.playerIndex);
-      context.fillText(base.matchScore + base.gameScore, x, y);
-      context.fillText('#' + base.place, x, y + lineH);
+    context.fillStyle = textColor;
+    context.fillText(T('Total'), x, y);
+    strokeHorizon(context, y - 0.5 * lineH);
+    for (const base of lastGame.bases) {
+      const tx = x + cellW * (1 + base.playerIndex);
+      context.fillStyle = playerColors[base.playerIndex];
+      context.fillText(base.nextScore, tx, y);
+      context.fillText('#' + base.nextPlace, tx, y + lineH);
     }
   }
 
   function renderHands(context) {
     const currentGame = match.getCurrentGame();
     const handCount = currentGame.winningHands.length;
-    const h = rackTileH + (5 + handCount + match.playerCount) * lineH;
-    let y = -h / 2 + lineH;
+    const h = rackTileH + (8 + handCount) * lineH;
+    let y = -0.5 * h + 0.5 * lineH;
     context.fillStyle = 'white';
-    context.fillText(
-      formatRoundGame() +
-        ': ' +
-        match.players[currentGame.bases[currentGame.winnerBaseIndex].playerIndex].name +
-        ' won from ' +
-        (currentGame.loserBaseIndex >= 0
-          ? match.players[currentGame.bases[currentGame.loserBaseIndex].playerIndex].name
-          : 'Stock'),
-      0,
-      y,
-    );
+    context.fillText(formatRoundGame(), 0, y);
 
-    y += lineH + rackTileH / 2;
+    y += lineH + 0.5 * rackTileH;
     for (let i = 0; i < currentGame.readyTiles.length; i++) {
-      renderTile(context, currentGame.readyTiles[i], rackTileW * (-match.dealCount / 2 + i), y, rackTileW, rackTileH);
+      renderTile(context, currentGame.readyTiles[i], rackX + rackTileW * (0.5 + i), y, rackTileW, rackTileH);
     }
-    renderTile(context, currentGame.winningTile, rackTileW * (match.dealCount / 2), y, rackTileW, rackTileH);
+    renderTile(context, currentGame.winningTile, rackX + rackTileW * (0.7 + match.dealCount), y, rackTileW, rackTileH);
 
-    y += rackTileH / 2 + lineH;
+    y += 0.5 * rackTileH + lineH;
     context.textAlign = 'right';
     for (let i = 0; i < handCount; i++) {
       const hand = currentGame.winningHands[i];
-      context.fillText(getHandName(hand), lineH, y);
+      context.fillText(T(getHandName(hand)), lineH, y);
       context.fillText(getHandScore(hand, match.dealCount), 3 * lineH, y);
       y += lineH;
     }
-    context.fillText('Total', lineH, y);
+    context.fillStyle = winningColor;
+    context.fillText(T('Total'), lineH, y);
     context.fillText(currentGame.handsScore, 3 * lineH, y);
+    strokeHorizon(context, y - 0.5 * lineH);
 
-    y += 2 * lineH;
-    for (const base of currentGame.bases) {
-      const py = y + base.playerIndex * lineH;
-      context.fillText(match.players[base.playerIndex].name, -4 * lineH, py);
-      context.fillText(base.matchScore, -2 * lineH, py);
-      context.fillText((base.gameScore > 0 ? '+' : '') + base.gameScore + ' = ', 2 * lineH, py);
-      context.fillText(base.matchScore + base.gameScore, 4 * lineH, py);
-      context.fillText('#' + base.place, 6 * lineH, py);
+    context.textAlign = 'right';
+    const cellW = 4 * lineH;
+    const x = -0.5 * cellW * match.playerCount + cellW;
+    y += 1.5 * lineH;
+    for (let i = 0; i < match.playerCount; i++) {
+      const base = currentGame.bases[i];
+      const px = x + cellW * base.playerIndex;
+      context.fillStyle = base.gameScore > 0 ? winningColor : base.gameScore < 0 ? selectedColor : textColor;
+      context.fillText(T(match.players[base.playerIndex].name), px, y);
+      context.fillText(base.score, px, y + lineH);
+      context.fillText((base.gameScore > 0 ? '+' : '') + base.gameScore, px, y + 2 * lineH);
+      context.fillText(base.nextScore, px, y + 3 * lineH);
+      context.fillText('#' + base.nextPlace, px, y + 4 * lineH);
     }
+    strokeHorizon(context, y + 2.5 * lineH);
   }
 
   const playerSelectRect = [0, -4 * lineH, 8 * lineH, 2 * lineH];
   const playerOptionW = playerSelectRect[2] / playerCounts.length;
-  const dealSelectRect = [0, -lineH, 8 * lineH, 2 * lineH];
+  const dealSelectRect = [0, -1 * lineH, 8 * lineH, 2 * lineH];
   const dealOptionW = dealSelectRect[2] / dealCounts.length;
   const roundSelectRect = [0, 2 * lineH, 8 * lineH, 2 * lineH];
   const roundOptionW = roundSelectRect[2] / roundCounts.length;
-  const startButtonRect = [-5 * lineH, 5 * lineH, 10 * lineH, 3 * lineH];
-  const reloadButtonRect = [-11 * lineH, 5 * lineH, 5 * lineH, 3 * lineH];
-  const sourceButtonRect = [6 * lineH, 5 * lineH, 5 * lineH, lineH * 3];
+  const startButtonRect = [-0.5 * stageR, 5 * lineH, stageR, 3 * lineH];
+  const homeButtonRect = [-stageR + 0.5 * lineH, 5 * lineH, 0.5 * stageR - lineH, 3 * lineH];
+  const reloadButtonRect = [0.5 * stageR + 0.5 * lineH, 5 * lineH, 0.5 * stageR - lineH, 3 * lineH];
 
-  function renderHome(context) {
+  function renderTitle(context) {
     const labelX = -4 * lineH;
     const playerCy = getRectCenterY(playerSelectRect);
-    context.fillText('Players', labelX, playerCy);
+    context.fillText(T('AI oppoents'), labelX, playerCy);
     for (let i = 0; i < playerCounts.length; i++) {
+      const value = playerCounts[i];
       const optionX = playerSelectRect[0] + playerOptionW * i;
-      if (i === settings.playerSelectedIndex) {
+      if (value === settings.playerCount) {
         context.strokeRect(optionX, playerCy - playerSelectRect[3] / 2, playerOptionW, playerSelectRect[3]);
       }
-      context.fillText(playerCounts[i], optionX + playerOptionW / 2, playerCy);
+      context.fillText(value - 1, optionX + playerOptionW / 2, playerCy);
     }
 
     const dealCy = getRectCenterY(dealSelectRect);
-    context.fillText('Tiles', labelX, dealCy);
+    context.fillText(T('Dealt tiles'), labelX, dealCy);
     for (let i = 0; i < dealCounts.length; i++) {
+      const value = dealCounts[i];
       const optionX = dealSelectRect[0] + dealOptionW * i;
-      if (i === settings.dealSelectedIndex) {
+      if (value === settings.dealCount) {
         context.strokeRect(optionX, dealCy - dealSelectRect[3] / 2, dealOptionW, dealSelectRect[3]);
       }
-      context.fillText(dealCounts[i], optionX + dealOptionW / 2, dealCy);
+      context.fillText(value, optionX + dealOptionW / 2, dealCy);
     }
 
     const roundCy = getRectCenterY(roundSelectRect);
-    context.fillText('Rounds', labelX, roundCy);
+    context.fillText(T('Rounds'), labelX, roundCy);
     for (let i = 0; i < roundCounts.length; i++) {
+      const value = roundCounts[i];
       const optionX = roundSelectRect[0] + roundOptionW * i;
-      if (i === settings.roundSelectedIndex) {
+      if (value === settings.roundCount) {
         context.strokeRect(optionX, roundCy - roundSelectRect[3] / 2, roundOptionW, roundSelectRect[3]);
       }
-      context.fillText(roundCounts[i], optionX + roundOptionW / 2, roundCy);
+      context.fillText(value, optionX + roundOptionW / 2, roundCy);
     }
 
     context.strokeRect(...startButtonRect);
-    context.fillText('Start', getRectCenterX(startButtonRect), getRectCenterY(startButtonRect));
+    context.fillText(T('Start'), getRectCenterX(startButtonRect), getRectCenterY(startButtonRect));
+    context.strokeRect(...homeButtonRect);
+    context.fillText(T('Home'), getRectCenterX(homeButtonRect), getRectCenterY(homeButtonRect));
     context.strokeRect(...reloadButtonRect);
-    context.fillText('Reload', getRectCenterX(reloadButtonRect), getRectCenterY(reloadButtonRect));
-    context.strokeRect(...sourceButtonRect);
-    context.fillText('Source', getRectCenterX(sourceButtonRect), getRectCenterY(sourceButtonRect));
+    context.fillText(T('Reload'), getRectCenterX(reloadButtonRect), getRectCenterY(reloadButtonRect));
 
-    context.font = Math.floor(lineH * 2) + 'px sans-serif';
-    context.fillText('Small Mahjong', 0, -6 * lineH);
+    context.fillText(__APP_VERSION__, 0, -5 * lineH);
+    context.font = Math.floor(lineH * 1.8) + 'px Arial, sans-serif';
+    context.fillText(T('Small Mahjong'), 0, -7 * lineH);
   }
 
   function renderCanvas(context) {
-    context.fillStyle = '#060';
-    context.fillRect(stageX, stageY, stageW, stageH);
+    context.clearRect(stageX, stageY, stageW, stageH);
     context.font = normalFont;
     context.textAlign = 'center';
     context.textBaseline = 'middle';
-    context.fillStyle = '#fff';
+    context.fillStyle = textColor;
     context.strokeStyle = '#fff';
 
-    if (scene === HOME) {
-      renderHome(context);
+    if (scene === TITLE) {
+      renderTitle(context);
       return;
     }
     if (scene === HANDS) {
@@ -287,61 +318,72 @@ on(window, 'DOMContentLoaded', () => {
     }
 
     const currentGame = match.getCurrentGame();
-    context.font = Math.floor(0.5 * tableTileH) + 'px sans-serif';
-    fillDoubleText(context, formatRoundGame(), currentGame.stockTiles.length, 0, tableCy);
-    context.strokeRect(...quitButtonRect);
+    context.font = Math.floor(0.5 * tableTileH) + 'px Arial, sans-serif';
+    fillDoubleText(context, formatRoundGame(), currentGame.stockTiles.length, 0, tableCy, tableButtonRect[2]);
+    context.strokeRect(...tableButtonRect);
     for (let baseIndex = 0; baseIndex < currentGame.bases.length; baseIndex++) {
       const base = currentGame.bases[baseIndex];
       const player = match.players[base.playerIndex];
       const [x, y] = [
-        [0, tableCy + 2.5 * tableTileW],
-        [2.5 * tableTileW, tableCy],
-        [0, tableCy - 2.5 * tableTileW],
-        [-2.5 * tableTileW, tableCy],
+        [0, tableCy + 2.25 * tableTileW],
+        [2.25 * tableTileW, tableCy],
+        [0, tableCy - 2.25 * tableTileW],
+        [-2.25 * tableTileW, tableCy],
       ][playerPositions[base.playerIndex]];
-      context.fillStyle = baseIndex === currentGame.currentBaseIndex ? '#0ff' : '#fff';
-      fillDoubleText(context, player.name, base.matchScore, x, y);
-    }
-
-    const manualBaseIndex = currentGame.bases.findIndex((base) => base.playerIndex === match.manualPlayerIndex);
-    const manualBase = currentGame.bases[manualBaseIndex];
-    for (let concealedIndex = 0; concealedIndex < manualBase.concealedTiles.length; concealedIndex++) {
-      const tile = manualBase.concealedTiles[concealedIndex];
-      const cx = rackTileW * (-match.dealCount / 2 + concealedIndex);
-      const cy = rackY + rackTileH / 2;
-      renderTile(
+      context.fillStyle = baseIndex === currentGame.currentBaseIndex ? selectedColor : textColor;
+      fillDoubleText(
         context,
-        tile,
-        cx,
-        cy,
-        rackTileW,
-        rackTileH,
-        0,
-        concealedIndex === currentTileIndex || manualBaseIndex === currentGame.winnerBaseIndex,
-        manualBase.isReaching() && !manualBase.isTileReachable(tile),
+        T(player.name) + (baseIndex === 0 ? T('(D)') : ''),
+        '#' + base.place + ': ' + base.score,
+        x,
+        y,
+        2.5 * tableTileW,
       );
     }
 
     for (let baseIndex = 0; baseIndex < currentGame.bases.length; baseIndex++) {
       const base = currentGame.bases[baseIndex];
+      const position = playerPositions[base.playerIndex];
+      if (!position) {
+        for (let concealedIndex = 0; concealedIndex < base.concealedTiles.length; concealedIndex++) {
+          const tile = base.concealedTiles[concealedIndex];
+          const cx = rackX + rackTileW * ((concealedIndex < match.dealCount ? 0.5 : 0.7) + concealedIndex);
+          const cy = rackY + 0.5 * rackTileH;
+          renderTile(
+            context,
+            tile,
+            cx,
+            cy,
+            rackTileW,
+            rackTileH,
+            0,
+            baseIndex === currentGame.winnerBaseIndex
+              ? winningColor
+              : base.isReaching() && !base.isTileReachable(tile)
+                ? disabledColor
+                : concealedIndex === selectedTileIndex
+                  ? selectedColor
+                  : null,
+          );
+        }
+      }
       context.save();
       try {
         context.translate(0, tableCy);
-        const position = playerPositions[base.playerIndex];
         if (position) {
           context.rotate([0, 1.5 * Math.PI, Math.PI, 0.5 * Math.PI][position]);
+          const x = -0.5 * tableTileW * (1.2 + match.dealCount);
+          const cy = 0.5 * (tableH - tableTileH);
           for (let concealedIndex = 0; concealedIndex < base.concealedTiles.length; concealedIndex++) {
-            const cx = tableTileW * (-match.dealCount / 2 + concealedIndex);
-            const cy = (tableH - tableTileH) / 2;
             renderTile(
               context,
               scene === FINISHED ? base.concealedTiles[concealedIndex] : 0,
-              cx,
+              x + tableTileW * ((concealedIndex < match.dealCount ? 0.5 : 0.7) + concealedIndex),
               cy,
               tableTileW,
               tableTileH,
               0,
-              baseIndex === currentGame.winnerBaseIndex,
+              baseIndex === currentGame.winnerBaseIndex ? winningColor : null,
             );
           }
         }
@@ -363,7 +405,9 @@ on(window, 'DOMContentLoaded', () => {
             tableTileW,
             tableTileH,
             discardedIndex === base.reachedDiscardedIndex ? -0.5 * Math.PI : 0,
-            baseIndex === currentGame.loserBaseIndex && discardedIndex === base.discardedTiles.length - 1,
+            baseIndex === currentGame.loserBaseIndex && discardedIndex === base.discardedTiles.length - 1
+              ? winningColor
+              : null,
           );
         }
       } finally {
@@ -371,28 +415,8 @@ on(window, 'DOMContentLoaded', () => {
       }
     }
 
-    const currentBase = currentGame.getCurrentBase();
-    if (currentBase && currentBase.playerIndex === match.manualPlayerIndex) {
-      if ((currentBase.isReachable() || currentBase.isReaching()) && !currentBase.isReached()) {
-        context.fillStyle = currentBase.isReaching() ? '#f0f' : '#0ff';
-        context.fillRect(...reachButtonRect);
-        context.fillStyle = '#000';
-        context.fillText(
-          currentBase.isReachable() ? 'Reach?' : 'Cancel?',
-          getRectCenterX(reachButtonRect),
-          getRectCenterY(reachButtonRect),
-        );
-      }
-      if (manualWinnable) {
-        context.fillStyle = '#ff0';
-        context.fillRect(...reachButtonRect);
-        context.fillStyle = '#000';
-        context.fillText('Win?', getRectCenterX(reachButtonRect), getRectCenterY(reachButtonRect));
-      }
-    }
-
     if (messageText) {
-      context.font = Math.floor(1.2 * lineH) + 'px sans-serif';
+      context.font = Math.floor(1.2 * lineH) + 'px Arial, sans-serif';
       const messageW = context.measureText(messageText).width + lineH * 2;
       const messageH = lineH * 3;
       const [cx, cy] = messagePoints[messagePosition];
@@ -412,6 +436,25 @@ on(window, 'DOMContentLoaded', () => {
       context.fillRect(messageX, messageY, messageW, messageH);
       context.fillStyle = '#000';
       context.fillText(messageText, messageX + messageW / 2, messageY + messageH / 2);
+    } else if (scene === PLAYING) {
+      const currentBase = currentGame.getCurrentBase();
+      if (currentBase && currentBase.playerIndex === match.manualPlayerIndex) {
+        if (currentBase.canWin()) {
+          context.fillStyle = winningColor;
+          context.fillRect(...rackButtonRect);
+          context.fillStyle = '#000';
+          context.fillText(T('Tsumo?'), getRectCenterX(rackButtonRect), getRectCenterY(rackButtonRect));
+        } else if ((currentBase.isReachable() || currentBase.isReaching()) && !currentBase.isReached()) {
+          context.fillStyle = currentBase.isReaching() ? disabledColor : selectedColor;
+          context.fillRect(...rackButtonRect);
+          context.fillStyle = '#000';
+          context.fillText(
+            currentBase.isReachable() ? T('Reach?') : T('Cancel?'),
+            getRectCenterX(rackButtonRect),
+            getRectCenterY(rackButtonRect),
+          );
+        }
+      }
     }
   }
 
@@ -445,33 +488,29 @@ on(window, 'DOMContentLoaded', () => {
     stageY = -stageH / 2;
 
     if (match) {
-      const tileW = stageW / 15;
-      const tileH = tileW * tileRatio;
-      tableW = Math.min(stageW, stageH - tileH - lineH);
+      rackTileW = stageW / 14.6;
+      tableW = Math.min(stageW, stageH - 2 * rackTileW);
       tableH = tableW;
-      tableTileW = tableW / (14 + 2 * tileRatio);
-      tableTileH = tableTileW * tileRatio;
-      rackTileW = Math.min((stageW - lineH) / (match.dealCount + 1), (stageH - tableH - lineH) / tileRatio);
-      rackTileH = rackTileW * tileRatio;
-      rackH = rackTileH + lineH;
-      rackY = (tableH + rackH) / 2 - rackH;
-      tableX = -tableW / 2;
+      tableTileW = tableW / 16.6;
+      tableTileH = 1.2 * tableTileW;
+      rackTileW = Math.min(stageW / (1.6 + match.dealCount), 0.5 * (stageH - tableH));
+      rackTileH = 1.2 * rackTileW;
+      rackW = rackTileW * (1.2 + match.dealCount);
+      rackH = 1.5 * rackTileH;
+      rackX = -0.5 * rackW;
+      rackY = 0.5 * (tableH - rackH);
+      tableX = -0.5 * tableW;
       tableY = rackY - tableH;
-      tableCy = tableY + tableH / 2;
+      tableCy = tableY + 0.5 * tableH;
       messagePoints = [
-        [0, tableCy + tableH / 2],
-        [tableW / 2, tableCy],
-        [0, tableCy - tableH / 2],
-        [-tableW / 2, tableCy],
+        [0, tableCy + 0.5 * tableH],
+        [0.5 * tableW, tableCy],
+        [0, tableCy - 0.5 * tableH],
+        [-0.5 * tableW, tableCy],
         [0, tableCy],
       ];
-      quitButtonRect = [-1.5 * tableTileW, tableCy - 1.5 * tableTileW, 3 * tableTileW, 3 * tableTileW];
-      reachButtonRect = [
-        (rackTileW * (match.dealCount + 1)) / 2 - 4 * lineH,
-        rackY - 2.5 * lineH,
-        4 * lineH,
-        2 * lineH,
-      ];
+      tableButtonRect = [-tableTileW, tableCy - tableTileW, 2 * tableTileW, 2 * tableTileW];
+      rackButtonRect = [rackX + rackW - 4 * lineH, rackY - 2 * lineH, 4 * lineH, 2 * lineH];
     }
   }
 
@@ -493,7 +532,7 @@ on(window, 'DOMContentLoaded', () => {
       messageResolveSet.add(resolve);
       const player = match.players[playerIndex];
       if (player) {
-        messageText = player.name + ': ' + text;
+        messageText = T(player.name) + ': ' + text;
         messagePosition = playerPositions[playerIndex];
       } else {
         messageText = text;
@@ -512,7 +551,7 @@ on(window, 'DOMContentLoaded', () => {
   }
 
   function doNext() {
-    if (match.isFinalGame()) {
+    if (match.isLastGame()) {
       scene = RESULTS;
       updateCanvas();
     } else {
@@ -524,36 +563,35 @@ on(window, 'DOMContentLoaded', () => {
   async function doWinFromStock() {
     const currentGame = match.getCurrentGame();
     match.winGame(currentGame.currentBaseIndex, -1, 0);
-    manualWinnable = false;
-    await showMessage(currentGame.getCurrentBase().playerIndex, 'Win from Stock');
+    await showMessage(currentGame.getCurrentBase().playerIndex, T('Tsumo!'));
     scene = FINISHED;
     updateCanvas();
   }
 
   async function doDiscard(tile) {
-    manualWinnable = false;
     const currentGame = match.getCurrentGame();
     const currentBase = currentGame.getCurrentBase();
     const reaching = currentBase.isReaching();
     currentGame.discardTile(tile);
     if (reaching) {
-      await showMessage(currentGame.getCurrentBase().playerIndex, 'Reach');
+      await showMessage(currentGame.getCurrentBase().playerIndex, T('Reach!'));
     }
     for (let i = 1; i < match.playerCount; i++) {
       const baseIndex = (currentGame.currentBaseIndex + i) % match.playerCount;
       const base = currentGame.bases[baseIndex];
-      if (base.isReached() && currentGame.canWin(baseIndex, tile)) {
+      if (base.isReached() && base.isTileWinnable(tile)) {
         match.winGame(baseIndex, currentGame.currentBaseIndex, tile);
-        await showMessage(base.playerIndex, 'Win from ' + match.players[currentBase.playerIndex].name);
+        await showMessage(base.playerIndex, T('Ron!'));
         scene = FINISHED;
         updateCanvas();
         return;
       }
     }
     if (!currentGame.stockTiles.length) {
-      currentGame.updatePlaces();
+      match.drawGame();
+      await showMessage(-1, T('Draw the game'));
       scene = FINISHED;
-      await showMessage(-1, 'Draw');
+      updateCanvas();
       return;
     }
     updateCanvas();
@@ -568,7 +606,7 @@ on(window, 'DOMContentLoaded', () => {
     currentGame.drawTile(tile);
     updateCanvas();
     const currentBase = currentGame.getCurrentBase();
-    const winnable = currentGame.canWin(currentGame.currentBaseIndex, tile);
+    const winnable = currentBase.isTileWinnable(tile);
     if (currentBase.isReached()) {
       if (winnable) {
         doWinFromStock();
@@ -584,20 +622,17 @@ on(window, 'DOMContentLoaded', () => {
         doWinFromStock();
       } else {
         setTimeout(() => {
-          const t = currentGame.think();
-          if (currentBase.isTileReachable(t)) {
-            currentBase.setReaching(true);
-          }
+          const [t, reaching] = currentGame.think();
+          currentBase.setReaching(reaching);
           doDiscard(t);
         }, thinkTime);
       }
       return;
     }
-    manualWinnable = winnable;
   }
 
   async function doStarting() {
-    currentTileIndex = -1;
+    selectedTileIndex = -1;
     scene = PLAYING;
     await showMessage(-1, formatRoundGame());
     doDraw();
@@ -605,9 +640,9 @@ on(window, 'DOMContentLoaded', () => {
 
   function doStart() {
     match = new Match();
-    match.playerCount = playerCounts[settings.playerSelectedIndex];
-    match.dealCount = dealCounts[settings.dealSelectedIndex];
-    match.roundCount = roundCounts[settings.roundSelectedIndex];
+    match.playerCount = settings.playerCount;
+    match.dealCount = settings.dealCount;
+    match.roundCount = settings.roundCount;
     match.startGame();
     playerPositions = Array(match.playerCount);
     for (let i = 0; i < match.playerCount; i++) {
@@ -619,8 +654,8 @@ on(window, 'DOMContentLoaded', () => {
     doStarting();
   }
 
-  function doHome() {
-    scene = HOME;
+  function doTitle() {
+    scene = TITLE;
     updateCanvas();
   }
 
@@ -634,89 +669,70 @@ on(window, 'DOMContentLoaded', () => {
   }
 
   function getTileIndex([x, y]) {
-    if (y >= rackY) {
-      const i = Math.floor((x + (rackTileW * (match.dealCount + 1)) / 2) / rackTileW);
-      if (i >= 0 && i <= match.dealCount) {
-        return i;
-      }
+    if (x >= rackX && x < rackX + rackW && y >= rackY) {
+      return Math.min(Math.floor((x - rackX) / rackTileW), match.dealCount);
     }
     return -1;
   }
 
-  function doPointerDown(ev) {
-    if (scene === HOME) {
+  async function doPointerDown(ev) {
+    if (messageText) {
+      return;
+    }
+    if (scene === TITLE) {
       const pt = getPointer(ev);
       if (isRectContains(startButtonRect, pt)) {
         doStart();
-        return;
+      } else if (isRectContains(homeButtonRect, pt)) {
+        location.href = '../';
       } else if (isRectContains(reloadButtonRect, pt)) {
         location.reload();
-        return;
-      } else if (isRectContains(sourceButtonRect, pt)) {
-        location.href = 'https://github.com/usumerican/smallmahjong';
-        return;
-      }
-      if (isRectContains(playerSelectRect, pt)) {
-        settings.playerSelectedIndex = Math.floor((pt[0] - playerSelectRect[0]) / playerOptionW);
+      } else if (isRectContains(playerSelectRect, pt)) {
+        settings.playerCount = playerCounts[Math.floor((pt[0] - playerSelectRect[0]) / playerOptionW)];
       } else if (isRectContains(dealSelectRect, pt)) {
-        settings.dealSelectedIndex = Math.floor((pt[0] - dealSelectRect[0]) / dealOptionW);
+        settings.dealCount = dealCounts[Math.floor((pt[0] - dealSelectRect[0]) / dealOptionW)];
       } else if (isRectContains(roundSelectRect, pt)) {
-        settings.roundSelectedIndex = Math.floor((pt[0] - roundSelectRect[0]) / roundOptionW);
+        settings.roundCount = roundCounts[Math.floor((pt[0] - roundSelectRect[0]) / roundOptionW)];
       }
       updateCanvas();
-      return;
-    }
-
-    if (scene === PLAYING) {
-      const pt = getPointer(ev);
-      if (isRectContains(quitButtonRect, pt)) {
-        if (confirm('Quit game?')) {
-          doHome();
-        }
-        return;
-      }
+    } else if (scene === PLAYING) {
       const currentBase = match.getCurrentGame().getCurrentBase();
       if (currentBase?.playerIndex === match.manualPlayerIndex) {
-        if (isRectContains(reachButtonRect, pt)) {
-          if (currentBase.isReachable() || currentBase.isReaching()) {
+        const pt = getPointer(ev);
+        if (isRectContains(tableButtonRect, pt)) {
+          if (confirm(T('Leave the game?'))) {
+            doTitle();
+          }
+        } else if (isRectContains(rackButtonRect, pt)) {
+          if (currentBase.canWin()) {
+            doWinFromStock();
+          } else if (currentBase.isReachable() || currentBase.isReaching()) {
             currentBase.setReaching(!currentBase.isReaching());
             updateCanvas();
-          } else if (manualWinnable) {
-            doWinFromStock();
           }
-          return;
+        } else {
+          selectedTileIndex = getTileIndex(pt);
+          updateCanvas();
         }
-        currentTileIndex = getTileIndex(pt);
-        updateCanvas();
       }
-      return;
-    }
-
-    if (scene === FINISHED) {
+    } else if (scene === FINISHED) {
       if (match.getCurrentGame().winnerBaseIndex >= 0) {
         scene = HANDS;
         updateCanvas();
       } else {
         doNext();
       }
-      return;
-    }
-
-    if (scene === HANDS) {
+    } else if (scene === HANDS) {
       doNext();
-      return;
-    }
-
-    if (scene === RESULTS) {
-      doHome();
-      return;
+    } else if (scene === RESULTS) {
+      doTitle();
     }
   }
 
   function doPointerMove(ev) {
     if (scene === PLAYING) {
-      if (currentTileIndex >= 0) {
-        currentTileIndex = getTileIndex(getPointer(ev));
+      if (selectedTileIndex >= 0) {
+        selectedTileIndex = getTileIndex(getPointer(ev));
         updateCanvas();
       }
     }
@@ -724,19 +740,19 @@ on(window, 'DOMContentLoaded', () => {
 
   function doPointerUp() {
     if (scene === PLAYING) {
-      if (currentTileIndex >= 0) {
+      if (selectedTileIndex >= 0) {
         const currentBase = match.getCurrentGame().getCurrentBase();
         if (currentBase.playerIndex === match.manualPlayerIndex) {
-          const tile = currentBase.concealedTiles[currentTileIndex];
+          const tile = currentBase.concealedTiles[selectedTileIndex];
           if (!currentBase.isReaching() || currentBase.isTileReachable(tile)) {
             doDiscard(tile);
           }
         }
-        currentTileIndex = -1;
+        selectedTileIndex = -1;
         updateCanvas();
       }
     }
   }
 
-  doHome();
+  doTitle();
 });
