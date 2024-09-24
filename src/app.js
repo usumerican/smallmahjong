@@ -153,13 +153,13 @@ on(window, 'DOMContentLoaded', async () => {
     const lastGame = match.games[match.games.length - 1];
     const topPlayerIndex = lastGame.bases.find((base) => base.nextPlace === 1).playerIndex;
     const playerColors = Array(match.playerCount).fill(textColor);
-    playerColors[lastGame.bases.find((base) => base.nextPlace === match.playerCount).playerIndex] = selectedColor;
+    playerColors[match.manualPlayerIndex] = selectedColor;
     playerColors[topPlayerIndex] = winningColor;
     const h = (4 + gameCount) * lineH;
     let y = -0.5 * h + 0.5 * lineH;
     context.fillText(
       T(
-        match.playerCount >= 4 && match.roundCount >= 4 && match.manualPlayerIndex === topPlayerIndex
+        match.manualPlayerIndex === topPlayerIndex && match.playerCount >= 4 && match.roundCount >= 4
           ? 'Winner! Winner! Dinner!'
           : 'Results',
       ),
