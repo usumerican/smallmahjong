@@ -2,13 +2,52 @@ export function randomInt(n) {
   return Math.floor(n * Math.random());
 }
 
-export function shuffleArray(arr) {
-  var i = arr.length;
+export function shuffleArray(arr, len) {
+  let i = len || arr.length;
   while (i) {
-    var j = randomInt(i);
-    var t = arr[--i];
+    const j = randomInt(i);
+    const t = arr[--i];
     arr[i] = arr[j];
     arr[j] = t;
+  }
+}
+
+export function randomSeed() {
+  return (1 + randomInt(2 ** 32 - 2)) | 0;
+}
+
+export class XorshiftRandom {
+  constructor(seed, skipCount = 0) {
+    this.x = 123456789;
+    this.y = 362436069;
+    this.z = 521288629;
+    this.w = seed | 0 || randomSeed();
+    for (let i = 0; i < skipCount; i++) {
+      this.next();
+    }
+  }
+
+  next() {
+    const t = this.x ^ (this.x << 11);
+    this.x = this.y;
+    this.y = this.z;
+    this.z = this.w;
+    this.w = this.w ^ (this.w >>> 19) ^ (t ^ (t >>> 8));
+    return this.w;
+  }
+
+  nextInt(n) {
+    return (this.next() >>> 0) % n;
+  }
+
+  shuffle(arr, len) {
+    let i = len || arr.length;
+    while (i) {
+      const j = this.nextInt(i);
+      const t = arr[--i];
+      arr[i] = arr[j];
+      arr[j] = t;
+    }
   }
 }
 
@@ -478,7 +517,6 @@ export function getHands(readyCounts, winningTile, turnState, reachState, fromSt
 
 export class Base {
   constructor() {
-    this.playerIndex = -1;
     this.concealedTiles = [];
     this.discardedTiles = [];
     this.turnState = 0;
@@ -560,8 +598,11 @@ export class Base {
 
 export class Game {
   constructor() {
+    this.seed = 0;
+    this.random = null;
     this.stockTiles = [];
     this.bases = [];
+    this.dealerIndex = 0;
     this.currentBaseIndex = -1;
     this.winnerBaseIndex = -1;
     this.loserBaseIndex = -1;
@@ -576,8 +617,9 @@ export class Game {
   }
 
   dealTiles(dealCount) {
+    this.random = new XorshiftRandom(this.seed > 0 ? this.seed : randomSeed(), 100);
     this.stockTiles.push(...TILES, ...TILES, ...TILES, ...TILES);
-    shuffleArray(this.stockTiles);
+    this.random.shuffle(this.stockTiles);
     for (const base of this.bases) {
       base.concealedTiles.push(...this.stockTiles.splice(0, dealCount));
       base.updateWinnableSet();
@@ -591,7 +633,8 @@ export class Game {
   }
 
   drawTile(tile) {
-    this.currentBaseIndex = (this.currentBaseIndex + 1) % this.bases.length;
+    this.currentBaseIndex =
+      this.currentBaseIndex >= 0 ? (this.currentBaseIndex + 1) % this.bases.length : this.dealerIndex;
     const currentBase = this.getCurrentBase();
     currentBase.concealedTiles.push(tile);
     if (this.stockTiles.length) {
@@ -690,7 +733,6 @@ export class Match {
       const player = new Player(playerNames[i]);
       this.players.push(player);
       const base = new Base();
-      base.playerIndex = i;
       base.turnState = i === 0 ? TURN_HEAVEN : TURN_EARTH;
       base.place = base.nextPlace = i + 1;
       game.bases.push(base);
@@ -706,10 +748,10 @@ export class Match {
   nextGame() {
     const lastGame = this.getCurrentGame();
     const nextGame = new Game();
+    nextGame.dealerIndex = (lastGame.dealerIndex + 1) % this.playerCount;
     for (let i = 0; i < this.playerCount; i++) {
-      const lastBase = lastGame.bases[(i + 1) % this.playerCount];
+      const lastBase = lastGame.bases[i];
       const nextBase = new Base();
-      nextBase.playerIndex = lastBase.playerIndex;
       nextBase.turnState = i === 0 ? TURN_HEAVEN : TURN_EARTH;
       nextBase.score = lastBase.nextScore;
       nextBase.place = lastBase.nextPlace;
@@ -723,7 +765,7 @@ export class Match {
     const placeBases = this.getCurrentGame()
       .bases.slice()
       .sort((a, b) => {
-        return b.nextScore - a.nextScore || a.playerIndex - b.playerIndex;
+        return b.nextScore - a.nextScore;
       });
     for (let i = 0; i < placeBases.length; i++) {
       placeBases[i].nextPlace = i + 1;
@@ -775,12 +817,6 @@ export class Match {
       currentGame.loserBaseIndex = loserBaseIndex;
       const loserBase = currentGame.bases[loserBaseIndex];
       loserBase.gameScore = -winnerScore;
-    }
-    const placeBases = currentGame.bases.slice().sort((a, b) => {
-      return b.nextScore - a.nextScore || a.playerIndex - b.playerIndex;
-    });
-    for (let i = 0; i < placeBases.length; i++) {
-      placeBases[i].nextPlace = i + 1;
     }
     this.drawGame();
   }

@@ -151,7 +151,7 @@ on(window, 'DOMContentLoaded', async () => {
   function renderResults(context) {
     const gameCount = match.games.length;
     const lastGame = match.games[match.games.length - 1];
-    const topPlayerIndex = lastGame.bases.find((base) => base.nextPlace === 1).playerIndex;
+    const topPlayerIndex = lastGame.bases.findIndex((base) => base.nextPlace === 1);
     const playerColors = Array(match.playerCount).fill(textColor);
     playerColors[match.manualPlayerIndex] = selectedColor;
     playerColors[topPlayerIndex] = winningColor;
@@ -178,18 +178,20 @@ on(window, 'DOMContentLoaded', async () => {
     for (let i = 0; i < gameCount; i++) {
       context.fillStyle = textColor;
       context.fillText(i + 1, x, y);
-      for (const base of match.games[i].bases) {
-        context.fillStyle = playerColors[base.playerIndex];
-        context.fillText(base.gameScore, x + cellW * (1 + base.playerIndex), y);
+      const game = match.games[i];
+      for (let j = 0; j < match.playerCount; j++) {
+        context.fillStyle = playerColors[j];
+        context.fillText(game.bases[j].gameScore, x + cellW * (1 + j), y);
       }
       y += lineH;
     }
     context.fillStyle = textColor;
     context.fillText(T('Total'), x, y);
     strokeHorizon(context, y - 0.5 * lineH);
-    for (const base of lastGame.bases) {
-      const tx = x + cellW * (1 + base.playerIndex);
-      context.fillStyle = playerColors[base.playerIndex];
+    for (let i = 0; i < match.playerCount; i++) {
+      const base = lastGame.bases[i];
+      const tx = x + cellW * (1 + i);
+      context.fillStyle = playerColors[i];
       context.fillText(base.nextScore, tx, y);
       context.fillText('#' + base.nextPlace, tx, y + lineH);
     }
@@ -228,9 +230,9 @@ on(window, 'DOMContentLoaded', async () => {
     y += 1.5 * lineH;
     for (let i = 0; i < match.playerCount; i++) {
       const base = currentGame.bases[i];
-      const px = x + cellW * base.playerIndex;
+      const px = x + cellW * i;
       context.fillStyle = base.gameScore > 0 ? winningColor : base.gameScore < 0 ? selectedColor : textColor;
-      context.fillText(T(match.players[base.playerIndex].name), px, y);
+      context.fillText(T(match.players[i].name), px, y);
       context.fillText(base.score, px, y + lineH);
       context.fillText((base.gameScore > 0 ? '+' : '') + base.gameScore, px, y + 2 * lineH);
       context.fillText(base.nextScore, px, y + 3 * lineH);
@@ -323,17 +325,17 @@ on(window, 'DOMContentLoaded', async () => {
     context.strokeRect(...tableButtonRect);
     for (let baseIndex = 0; baseIndex < currentGame.bases.length; baseIndex++) {
       const base = currentGame.bases[baseIndex];
-      const player = match.players[base.playerIndex];
+      const player = match.players[baseIndex];
       const [x, y] = [
         [0, tableCy + 2.25 * tableTileW],
         [2.25 * tableTileW, tableCy],
         [0, tableCy - 2.25 * tableTileW],
         [-2.25 * tableTileW, tableCy],
-      ][playerPositions[base.playerIndex]];
+      ][playerPositions[baseIndex]];
       context.fillStyle = baseIndex === currentGame.currentBaseIndex ? selectedColor : textColor;
       fillDoubleText(
         context,
-        T(player.name) + (baseIndex === 0 ? T('(D)') : ''),
+        T(player.name) + (baseIndex === currentGame.dealerIndex ? T('(D)') : ''),
         '#' + base.place + ': ' + base.score,
         x,
         y,
@@ -343,7 +345,7 @@ on(window, 'DOMContentLoaded', async () => {
 
     for (let baseIndex = 0; baseIndex < currentGame.bases.length; baseIndex++) {
       const base = currentGame.bases[baseIndex];
-      const position = playerPositions[base.playerIndex];
+      const position = playerPositions[baseIndex];
       if (!position) {
         for (let concealedIndex = 0; concealedIndex < base.concealedTiles.length; concealedIndex++) {
           const tile = base.concealedTiles[concealedIndex];
@@ -437,8 +439,8 @@ on(window, 'DOMContentLoaded', async () => {
       context.fillStyle = '#000';
       context.fillText(messageText, messageX + messageW / 2, messageY + messageH / 2);
     } else if (scene === PLAYING) {
-      const currentBase = currentGame.getCurrentBase();
-      if (currentBase && currentBase.playerIndex === match.manualPlayerIndex) {
+      if (currentGame.currentBaseIndex === match.manualPlayerIndex) {
+        const currentBase = currentGame.getCurrentBase();
         if (currentBase.canWin()) {
           context.fillStyle = winningColor;
           context.fillRect(...rackButtonRect);
@@ -563,7 +565,7 @@ on(window, 'DOMContentLoaded', async () => {
   async function doWinFromStock() {
     const currentGame = match.getCurrentGame();
     match.winGame(currentGame.currentBaseIndex, -1, 0);
-    await showMessage(currentGame.getCurrentBase().playerIndex, T('Tsumo!'));
+    await showMessage(currentGame.currentBaseIndex, T('Tsumo!'));
     scene = FINISHED;
     updateCanvas();
   }
@@ -574,14 +576,14 @@ on(window, 'DOMContentLoaded', async () => {
     const reaching = currentBase.isReaching();
     currentGame.discardTile(tile);
     if (reaching) {
-      await showMessage(currentGame.getCurrentBase().playerIndex, T('Reach!'));
+      await showMessage(currentGame.currentBaseIndex, T('Reach!'));
     }
     for (let i = 1; i < match.playerCount; i++) {
       const baseIndex = (currentGame.currentBaseIndex + i) % match.playerCount;
       const base = currentGame.bases[baseIndex];
       if (base.isReached() && base.isTileWinnable(tile)) {
         match.winGame(baseIndex, currentGame.currentBaseIndex, tile);
-        await showMessage(base.playerIndex, T('Ron!'));
+        await showMessage(baseIndex, T('Ron!'));
         scene = FINISHED;
         updateCanvas();
         return;
@@ -617,7 +619,7 @@ on(window, 'DOMContentLoaded', async () => {
       }
       return;
     }
-    if (currentBase.playerIndex !== match.manualPlayerIndex) {
+    if (currentGame.currentBaseIndex !== match.manualPlayerIndex) {
       if (winnable) {
         doWinFromStock();
       } else {
@@ -696,8 +698,9 @@ on(window, 'DOMContentLoaded', async () => {
       }
       updateCanvas();
     } else if (scene === PLAYING) {
-      const currentBase = match.getCurrentGame().getCurrentBase();
-      if (currentBase?.playerIndex === match.manualPlayerIndex) {
+      const currentGame = match.getCurrentGame();
+      if (currentGame.currentBaseIndex === match.manualPlayerIndex) {
+        const currentBase = currentGame.getCurrentBase();
         const pt = getPointer(ev);
         if (isRectContains(tableButtonRect, pt)) {
           if (confirm(T('Leave the game?'))) {
@@ -741,8 +744,9 @@ on(window, 'DOMContentLoaded', async () => {
   function doPointerUp() {
     if (scene === PLAYING) {
       if (selectedTileIndex >= 0) {
-        const currentBase = match.getCurrentGame().getCurrentBase();
-        if (currentBase.playerIndex === match.manualPlayerIndex) {
+        const currentGame = match.getCurrentGame();
+        if (currentGame.currentBaseIndex === match.manualPlayerIndex) {
+          const currentBase = currentGame.getCurrentBase();
           const tile = currentBase.concealedTiles[selectedTileIndex];
           if (!currentBase.isReaching() || currentBase.isTileReachable(tile)) {
             doDiscard(tile);
