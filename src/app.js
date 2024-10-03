@@ -1,6 +1,16 @@
 /* globals __APP_VERSION__, T */
 
-import { getHandName, getHandScore, getTileRank, getTileSuit, Match } from './lib';
+import {
+  getHandName,
+  getHandScore,
+  getTileRank,
+  getTileSuit,
+  Match,
+  randomInt,
+  randomSeed,
+  shuffleArray,
+  THINKS,
+} from './lib';
 
 function on(target, type, listner) {
   target.addEventListener(type, (ev) => {
@@ -31,6 +41,8 @@ on(window, 'DOMContentLoaded', async () => {
   const playerCounts = [1, 2, 3, 4];
   const dealCounts = [4, 7, 10, 13];
   const roundCounts = [0, 1, 2, 4];
+  const modes = [0, 1];
+  const nodeNames = [T('Normal'), T('Open')];
 
   if (!playerCounts.includes(settings.playerCount)) {
     settings.playerCount = playerCounts[1];
@@ -40,6 +52,9 @@ on(window, 'DOMContentLoaded', async () => {
   }
   if (!roundCounts.includes(settings.roundCount)) {
     settings.roundCount = roundCounts[1];
+  }
+  if (!modes.includes(settings.mode)) {
+    settings.mode = modes[0];
   }
 
   const canvas = document.querySelector('canvas');
@@ -62,7 +77,22 @@ on(window, 'DOMContentLoaded', async () => {
   const RESULTS = 4;
   let scene;
 
+  const playerSelectRect = [0, -4 * lineH, 8 * lineH, 2 * lineH];
+  const playerOptionW = playerSelectRect[2] / playerCounts.length;
+  const dealSelectRect = [0, -2 * lineH, 8 * lineH, 2 * lineH];
+  const dealOptionW = dealSelectRect[2] / dealCounts.length;
+  const roundSelectRect = [0, 0, 8 * lineH, 2 * lineH];
+  const roundOptionW = roundSelectRect[2] / roundCounts.length;
+  const modeSelectRect = [0, 2 * lineH, 8 * lineH, 2 * lineH];
+  const modeOptionW = modeSelectRect[2] / modes.length;
+  const startButtonRect = [-0.5 * stageR, 5 * lineH, stageR, 3 * lineH];
+  const homeButtonRect = [-stageR + 0.5 * lineH, 5 * lineH, 0.5 * stageR - lineH, 3 * lineH];
+  const reloadButtonRect = [0.5 * stageR + 0.5 * lineH, 5 * lineH, 0.5 * stageR - lineH, 3 * lineH];
+
+  const PLAYER_NAMES = ['You', 'Alice', 'Bob', 'Carol'];
   const thinkTime = 200;
+  let manualPlayerIndex;
+  let playerNames;
   let match;
   let playerPositions;
   let selectedTileIndex;
@@ -153,13 +183,13 @@ on(window, 'DOMContentLoaded', async () => {
     const lastGame = match.games[match.games.length - 1];
     const topPlayerIndex = lastGame.bases.findIndex((base) => base.nextPlace === 1);
     const playerColors = Array(match.playerCount).fill(textColor);
-    playerColors[match.manualPlayerIndex] = selectedColor;
+    playerColors[manualPlayerIndex] = selectedColor;
     playerColors[topPlayerIndex] = winningColor;
     const h = (4 + gameCount) * lineH;
     let y = -0.5 * h + 0.5 * lineH;
     context.fillText(
       T(
-        match.manualPlayerIndex === topPlayerIndex && match.playerCount >= 4 && match.roundCount >= 4
+        manualPlayerIndex === topPlayerIndex && match.playerCount >= 4 && match.roundCount >= 4
           ? 'Winner! Winner! Dinner!'
           : 'Results',
       ),
@@ -172,7 +202,7 @@ on(window, 'DOMContentLoaded', async () => {
     y += lineH;
     for (let i = 0; i < match.playerCount; i++) {
       context.fillStyle = playerColors[i];
-      context.fillText(T(match.players[i].name), x + cellW * (1 + i), y);
+      context.fillText(T(playerNames[i]), x + cellW * (1 + i), y);
     }
     y += lineH;
     for (let i = 0; i < gameCount; i++) {
@@ -232,7 +262,7 @@ on(window, 'DOMContentLoaded', async () => {
       const base = currentGame.bases[i];
       const px = x + cellW * i;
       context.fillStyle = base.gameScore > 0 ? winningColor : base.gameScore < 0 ? selectedColor : textColor;
-      context.fillText(T(match.players[i].name), px, y);
+      context.fillText(T(playerNames[i]), px, y);
       context.fillText(base.score, px, y + lineH);
       context.fillText((base.gameScore > 0 ? '+' : '') + base.gameScore, px, y + 2 * lineH);
       context.fillText(base.nextScore, px, y + 3 * lineH);
@@ -240,16 +270,6 @@ on(window, 'DOMContentLoaded', async () => {
     }
     strokeHorizon(context, y + 2.5 * lineH);
   }
-
-  const playerSelectRect = [0, -4 * lineH, 8 * lineH, 2 * lineH];
-  const playerOptionW = playerSelectRect[2] / playerCounts.length;
-  const dealSelectRect = [0, -1 * lineH, 8 * lineH, 2 * lineH];
-  const dealOptionW = dealSelectRect[2] / dealCounts.length;
-  const roundSelectRect = [0, 2 * lineH, 8 * lineH, 2 * lineH];
-  const roundOptionW = roundSelectRect[2] / roundCounts.length;
-  const startButtonRect = [-0.5 * stageR, 5 * lineH, stageR, 3 * lineH];
-  const homeButtonRect = [-stageR + 0.5 * lineH, 5 * lineH, 0.5 * stageR - lineH, 3 * lineH];
-  const reloadButtonRect = [0.5 * stageR + 0.5 * lineH, 5 * lineH, 0.5 * stageR - lineH, 3 * lineH];
 
   function renderTitle(context) {
     const labelX = -4 * lineH;
@@ -286,6 +306,17 @@ on(window, 'DOMContentLoaded', async () => {
       context.fillText(value, optionX + roundOptionW / 2, roundCy);
     }
 
+    const modeCy = getRectCenterY(modeSelectRect);
+    context.fillText(T('Mode'), labelX, modeCy);
+    for (let i = 0; i < modes.length; i++) {
+      const value = modes[i];
+      const optionX = modeSelectRect[0] + modeOptionW * i;
+      if (value === settings.mode) {
+        context.strokeRect(optionX, modeCy - modeSelectRect[3] / 2, modeOptionW, modeSelectRect[3]);
+      }
+      context.fillText(nodeNames[i], optionX + modeOptionW / 2, modeCy);
+    }
+
     context.strokeRect(...startButtonRect);
     context.fillText(T('Start'), getRectCenterX(startButtonRect), getRectCenterY(startButtonRect));
     context.strokeRect(...homeButtonRect);
@@ -299,7 +330,8 @@ on(window, 'DOMContentLoaded', async () => {
   }
 
   function renderCanvas(context) {
-    context.clearRect(stageX, stageY, stageW, stageH);
+    context.fillStyle = settings.mode ? '#006' : '#060';
+    context.fillRect(stageX, stageY, stageW, stageH);
     context.font = normalFont;
     context.textAlign = 'center';
     context.textBaseline = 'middle';
@@ -321,21 +353,20 @@ on(window, 'DOMContentLoaded', async () => {
 
     const currentGame = match.getCurrentGame();
     context.font = Math.floor(0.5 * tableTileH) + 'px Arial, sans-serif';
-    fillDoubleText(context, formatRoundGame(), currentGame.stockTiles.length, 0, tableCy, tableButtonRect[2]);
+    fillDoubleText(context, formatRoundGame(), currentGame.restCount, 0, tableCy, tableButtonRect[2]);
     context.strokeRect(...tableButtonRect);
-    for (let baseIndex = 0; baseIndex < currentGame.bases.length; baseIndex++) {
-      const base = currentGame.bases[baseIndex];
-      const player = match.players[baseIndex];
+    for (let playerIndex = 0; playerIndex < currentGame.playerCount; playerIndex++) {
+      const base = currentGame.bases[playerIndex];
       const [x, y] = [
         [0, tableCy + 2.25 * tableTileW],
         [2.25 * tableTileW, tableCy],
         [0, tableCy - 2.25 * tableTileW],
         [-2.25 * tableTileW, tableCy],
-      ][playerPositions[baseIndex]];
-      context.fillStyle = baseIndex === currentGame.currentBaseIndex ? selectedColor : textColor;
+      ][playerPositions[playerIndex]];
+      context.fillStyle = playerIndex === currentGame.currentPlayerIndex ? selectedColor : textColor;
       fillDoubleText(
         context,
-        T(player.name) + (baseIndex === currentGame.dealerIndex ? T('(D)') : ''),
+        T(playerNames[playerIndex]) + (playerIndex === currentGame.dealerIndex ? T('(D)') : ''),
         '#' + base.place + ': ' + base.score,
         x,
         y,
@@ -343,9 +374,9 @@ on(window, 'DOMContentLoaded', async () => {
       );
     }
 
-    for (let baseIndex = 0; baseIndex < currentGame.bases.length; baseIndex++) {
-      const base = currentGame.bases[baseIndex];
-      const position = playerPositions[baseIndex];
+    for (let playerIndex = 0; playerIndex < currentGame.playerCount; playerIndex++) {
+      const base = currentGame.bases[playerIndex];
+      const position = playerPositions[playerIndex];
       if (!position) {
         for (let concealedIndex = 0; concealedIndex < base.concealedTiles.length; concealedIndex++) {
           const tile = base.concealedTiles[concealedIndex];
@@ -359,9 +390,9 @@ on(window, 'DOMContentLoaded', async () => {
             rackTileW,
             rackTileH,
             0,
-            baseIndex === currentGame.winnerBaseIndex
+            playerIndex === currentGame.winnerIndex
               ? winningColor
-              : base.isReaching() && !base.isTileReachable(tile)
+              : base.isStateReaching() && !base.isTileReachable(tile)
                 ? disabledColor
                 : concealedIndex === selectedTileIndex
                   ? selectedColor
@@ -379,20 +410,20 @@ on(window, 'DOMContentLoaded', async () => {
           for (let concealedIndex = 0; concealedIndex < base.concealedTiles.length; concealedIndex++) {
             renderTile(
               context,
-              scene === FINISHED ? base.concealedTiles[concealedIndex] : 0,
+              settings.mode || scene === FINISHED ? base.concealedTiles[concealedIndex] : 0,
               x + tableTileW * ((concealedIndex < match.dealCount ? 0.5 : 0.7) + concealedIndex),
               cy,
               tableTileW,
               tableTileH,
               0,
-              baseIndex === currentGame.winnerBaseIndex ? winningColor : null,
+              playerIndex === currentGame.winnerIndex ? winningColor : null,
             );
           }
         }
         for (let discardedIndex = 0; discardedIndex < base.discardedTiles.length; discardedIndex++) {
           let cx = tableTileW * (-3 + (discardedIndex % discardedCol));
           if (
-            base.isReached() &&
+            base.isStateReached() &&
             discardedIndex >= base.reachedDiscardedIndex &&
             Math.floor(discardedIndex / discardedCol) === Math.floor(base.reachedDiscardedIndex / discardedCol)
           ) {
@@ -407,7 +438,7 @@ on(window, 'DOMContentLoaded', async () => {
             tableTileW,
             tableTileH,
             discardedIndex === base.reachedDiscardedIndex ? -0.5 * Math.PI : 0,
-            baseIndex === currentGame.loserBaseIndex && discardedIndex === base.discardedTiles.length - 1
+            playerIndex === currentGame.loserIndex && discardedIndex === base.discardedTiles.length - 1
               ? winningColor
               : null,
           );
@@ -439,19 +470,19 @@ on(window, 'DOMContentLoaded', async () => {
       context.fillStyle = '#000';
       context.fillText(messageText, messageX + messageW / 2, messageY + messageH / 2);
     } else if (scene === PLAYING) {
-      if (currentGame.currentBaseIndex === match.manualPlayerIndex) {
+      if (currentGame.currentPlayerIndex === manualPlayerIndex) {
         const currentBase = currentGame.getCurrentBase();
         if (currentBase.canWin()) {
           context.fillStyle = winningColor;
           context.fillRect(...rackButtonRect);
           context.fillStyle = '#000';
           context.fillText(T('Tsumo?'), getRectCenterX(rackButtonRect), getRectCenterY(rackButtonRect));
-        } else if ((currentBase.isReachable() || currentBase.isReaching()) && !currentBase.isReached()) {
-          context.fillStyle = currentBase.isReaching() ? disabledColor : selectedColor;
+        } else if ((currentBase.isStateReachable() || currentBase.isStateReaching()) && !currentBase.isStateReached()) {
+          context.fillStyle = currentBase.isStateReaching() ? disabledColor : selectedColor;
           context.fillRect(...rackButtonRect);
           context.fillStyle = '#000';
           context.fillText(
-            currentBase.isReachable() ? T('Reach?') : T('Cancel?'),
+            currentBase.isStateReachable() ? T('Reach?') : T('Cancel?'),
             getRectCenterX(rackButtonRect),
             getRectCenterY(rackButtonRect),
           );
@@ -532,9 +563,8 @@ on(window, 'DOMContentLoaded', async () => {
   function showMessage(playerIndex, text) {
     return new Promise((resolve) => {
       messageResolveSet.add(resolve);
-      const player = match.players[playerIndex];
-      if (player) {
-        messageText = T(player.name) + ': ' + text;
+      if (playerIndex >= 0) {
+        messageText = T(playerNames[playerIndex]) + ': ' + text;
         messagePosition = playerPositions[playerIndex];
       } else {
         messageText = text;
@@ -564,8 +594,8 @@ on(window, 'DOMContentLoaded', async () => {
 
   async function doWinFromStock() {
     const currentGame = match.getCurrentGame();
-    match.winGame(currentGame.currentBaseIndex, -1, 0);
-    await showMessage(currentGame.currentBaseIndex, T('Tsumo!'));
+    currentGame.winGame(currentGame.currentPlayerIndex, -1, 0);
+    await showMessage(currentGame.currentPlayerIndex, T('Tsumo!'));
     scene = FINISHED;
     updateCanvas();
   }
@@ -573,24 +603,24 @@ on(window, 'DOMContentLoaded', async () => {
   async function doDiscard(tile) {
     const currentGame = match.getCurrentGame();
     const currentBase = currentGame.getCurrentBase();
-    const reaching = currentBase.isReaching();
+    const reaching = currentBase.isStateReaching();
     currentGame.discardTile(tile);
     if (reaching) {
-      await showMessage(currentGame.currentBaseIndex, T('Reach!'));
+      await showMessage(currentGame.currentPlayerIndex, T('Reach!'));
     }
     for (let i = 1; i < match.playerCount; i++) {
-      const baseIndex = (currentGame.currentBaseIndex + i) % match.playerCount;
-      const base = currentGame.bases[baseIndex];
-      if (base.isReached() && base.isTileWinnable(tile)) {
-        match.winGame(baseIndex, currentGame.currentBaseIndex, tile);
-        await showMessage(baseIndex, T('Ron!'));
+      const playerIndex = (currentGame.currentPlayerIndex + i) % match.playerCount;
+      const base = currentGame.bases[playerIndex];
+      if (base.isStateReached() && base.isTileWinnable(tile)) {
+        currentGame.winGame(playerIndex, currentGame.currentPlayerIndex, tile);
+        await showMessage(playerIndex, T('Ron!'));
         scene = FINISHED;
         updateCanvas();
         return;
       }
     }
-    if (!currentGame.stockTiles.length) {
-      match.drawGame();
+    if (!currentGame.restCount) {
+      currentGame.drawGame();
       await showMessage(-1, T('Draw the game'));
       scene = FINISHED;
       updateCanvas();
@@ -608,8 +638,8 @@ on(window, 'DOMContentLoaded', async () => {
     currentGame.drawTile(tile);
     updateCanvas();
     const currentBase = currentGame.getCurrentBase();
-    const winnable = currentBase.isTileWinnable(tile);
-    if (currentBase.isReached()) {
+    const winnable = currentBase.canWin();
+    if (currentBase.isStateReached()) {
       if (winnable) {
         doWinFromStock();
       } else {
@@ -619,13 +649,13 @@ on(window, 'DOMContentLoaded', async () => {
       }
       return;
     }
-    if (currentGame.currentBaseIndex !== match.manualPlayerIndex) {
+    if (currentGame.currentPlayerIndex !== manualPlayerIndex) {
       if (winnable) {
         doWinFromStock();
       } else {
         setTimeout(() => {
-          const [t, reaching] = currentGame.think();
-          currentBase.setReaching(reaching);
+          const [t, reaching] = THINKS[THINKS.length - 1](currentGame);
+          currentBase.setStateReaching(reaching);
           doDiscard(t);
         }, thinkTime);
       }
@@ -641,14 +671,16 @@ on(window, 'DOMContentLoaded', async () => {
   }
 
   function doStart() {
-    match = new Match();
-    match.playerCount = settings.playerCount;
-    match.dealCount = settings.dealCount;
-    match.roundCount = settings.roundCount;
+    manualPlayerIndex = randomInt(settings.playerCount);
+    playerNames = PLAYER_NAMES.slice(1);
+    shuffleArray(playerNames);
+    playerNames = playerNames.slice(0, settings.playerCount - 1);
+    playerNames.splice(manualPlayerIndex, 0, PLAYER_NAMES[0]);
+    match = new Match(settings.playerCount, settings.dealCount, settings.roundCount, randomSeed());
     match.startGame();
     playerPositions = Array(match.playerCount);
     for (let i = 0; i < match.playerCount; i++) {
-      playerPositions[(match.manualPlayerIndex + i) % match.playerCount] =
+      playerPositions[(manualPlayerIndex + i) % match.playerCount] =
         match.playerCount === 2 ? i * 2 : match.playerCount === 3 ? Math.floor(i * 1.5) : i;
     }
     localStorage.setItem(settingsKey, JSON.stringify(settings));
@@ -677,7 +709,8 @@ on(window, 'DOMContentLoaded', async () => {
     return -1;
   }
 
-  async function doPointerDown(ev) {
+  function doPointerDown(ev) {
+    selectedTileIndex = -1;
     if (messageText) {
       return;
     }
@@ -695,11 +728,13 @@ on(window, 'DOMContentLoaded', async () => {
         settings.dealCount = dealCounts[Math.floor((pt[0] - dealSelectRect[0]) / dealOptionW)];
       } else if (isRectContains(roundSelectRect, pt)) {
         settings.roundCount = roundCounts[Math.floor((pt[0] - roundSelectRect[0]) / roundOptionW)];
+      } else if (isRectContains(modeSelectRect, pt)) {
+        settings.mode = modes[Math.floor((pt[0] - modeSelectRect[0]) / modeOptionW)];
       }
       updateCanvas();
     } else if (scene === PLAYING) {
       const currentGame = match.getCurrentGame();
-      if (currentGame.currentBaseIndex === match.manualPlayerIndex) {
+      if (currentGame.currentPlayerIndex === manualPlayerIndex) {
         const currentBase = currentGame.getCurrentBase();
         const pt = getPointer(ev);
         if (isRectContains(tableButtonRect, pt)) {
@@ -709,8 +744,8 @@ on(window, 'DOMContentLoaded', async () => {
         } else if (isRectContains(rackButtonRect, pt)) {
           if (currentBase.canWin()) {
             doWinFromStock();
-          } else if (currentBase.isReachable() || currentBase.isReaching()) {
-            currentBase.setReaching(!currentBase.isReaching());
+          } else if (currentBase.isStateReachable() || currentBase.isStateReaching()) {
+            currentBase.setStateReaching(!currentBase.isStateReaching());
             updateCanvas();
           }
         } else {
@@ -719,7 +754,7 @@ on(window, 'DOMContentLoaded', async () => {
         }
       }
     } else if (scene === FINISHED) {
-      if (match.getCurrentGame().winnerBaseIndex >= 0) {
+      if (match.getCurrentGame().winnerIndex >= 0) {
         scene = HANDS;
         updateCanvas();
       } else {
@@ -745,11 +780,13 @@ on(window, 'DOMContentLoaded', async () => {
     if (scene === PLAYING) {
       if (selectedTileIndex >= 0) {
         const currentGame = match.getCurrentGame();
-        if (currentGame.currentBaseIndex === match.manualPlayerIndex) {
+        if (currentGame.currentPlayerIndex === manualPlayerIndex) {
           const currentBase = currentGame.getCurrentBase();
-          const tile = currentBase.concealedTiles[selectedTileIndex];
-          if (!currentBase.isReaching() || currentBase.isTileReachable(tile)) {
-            doDiscard(tile);
+          if (currentBase.isDrawn()) {
+            const tile = currentBase.concealedTiles[selectedTileIndex];
+            if (!currentBase.isStateReaching() || currentBase.isTileReachable(tile)) {
+              doDiscard(tile);
+            }
           }
         }
         selectedTileIndex = -1;

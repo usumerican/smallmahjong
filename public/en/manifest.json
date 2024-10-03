@@ -1,7 +1,7 @@
 {
   "name": "Small Mahjong",
   "short_name": "Small Mahjong",
-  "description": "A simplified Japanese mahjong without melding and honor tiles",
+  "description": "A simplified Japanese riichi mahjong without melding and honor tiles",
   "start_url": ".",
   "display": "standalone",
   "theme_color": "#060",

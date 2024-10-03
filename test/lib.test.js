@@ -1,7 +1,9 @@
 import { expect, test } from 'vitest';
 import {
   DOUBLE_REACHED,
+  Game,
   generateCombinations,
+  generateStockTiles,
   getHands,
   getReachableMap,
   getTileCounts,
@@ -31,6 +33,7 @@ import {
   HAND_WIN_FROM_STOCK,
   Match,
   parseTiles,
+  randomSeed,
   REACHED,
   TURN_EARTH,
   TURN_HEAVEN,
@@ -328,13 +331,36 @@ test.each([
   ).toEqual(expected);
 });
 
-test('startGame', () => {
-  const match = new Match();
-  match.playerCount = 4;
-  match.dealCount = 13;
-  match.roundCount = 4;
+test('Game', () => {
+  const game = new Game(4, 13, 3, generateStockTiles(new XorshiftRandom(1)));
+  game.dealTiles();
+  expect(game.restCount).toEqual(56);
+  expect(game.currentPlayerIndex).toEqual(-1);
+  expect(game.bases.length).toEqual(4);
+  const base = game.bases[game.dealerIndex];
+  expect(base.concealedTiles.length).toEqual(13);
+  expect(base.place).toEqual(1);
+  expect(base.turnState).toEqual(TURN_HEAVEN);
+  const tile1 = game.pickTile();
+  expect(game.restCount).toEqual(55);
+  game.drawTile(tile1);
+  expect(game.currentPlayerIndex).toEqual(3);
+  expect(base.canWin()).toEqual(false);
+  expect(base.isStateReachable()).toEqual(false);
+  game.discardTile(tile1);
+  for (let i = 1; i < game.playerCount; i++) {
+    expect(game.bases[(game.dealerIndex + i) % game.playerCount].isTileWinnable(tile1)).toEqual(false);
+  }
+  const tile2 = game.pickTile();
+  expect(game.restCount).toEqual(54);
+  game.drawTile(tile2);
+  expect(game.currentPlayerIndex).toEqual(0);
+  game.discardTile(tile2);
+});
+
+test('Match', () => {
+  const match = new Match(4, 13, 4, randomSeed());
   match.startGame();
-  expect(match.players.length).toEqual(4);
   expect(match.getCurrentGame().bases.length).toEqual(4);
   expect(match.getCurrentGame().bases[0].concealedTiles.length).toEqual(13);
 });

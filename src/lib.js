@@ -13,18 +13,15 @@ export function shuffleArray(arr, len) {
 }
 
 export function randomSeed() {
-  return (1 + randomInt(2 ** 32 - 2)) | 0;
+  return randomInt(2 ** 32) | 0;
 }
 
 export class XorshiftRandom {
-  constructor(seed, skipCount = 0) {
+  constructor(seed) {
     this.x = 123456789;
     this.y = 362436069;
     this.z = 521288629;
-    this.w = seed | 0 || randomSeed();
-    for (let i = 0; i < skipCount; i++) {
-      this.next();
-    }
+    this.w = seed | 0;
   }
 
   next() {
@@ -36,7 +33,7 @@ export class XorshiftRandom {
     return this.w;
   }
 
-  nextInt(n) {
+  nextInt(n = 2 ** 32) {
     return (this.next() >>> 0) % n;
   }
 
@@ -152,8 +149,11 @@ export function compareGroups(a, b) {
   return 0;
 }
 
+const EMPTY_TILE_COUNTS = Array(TILE_LAST + 1).fill(0);
+const FULL_TILE_COUNTS = EMPTY_TILE_COUNTS.map((_, t) => (TILES.includes(t) ? 4 : 0));
+
 export function getTileCounts(tiles) {
-  const counts = Array(TILE_LAST + 1).fill(0);
+  const counts = EMPTY_TILE_COUNTS.slice();
   for (const t of tiles) {
     counts[t]++;
   }
@@ -347,7 +347,7 @@ export function getHandScore(hand, dealCount) {
   }
 }
 
-export function getHands(readyCounts, winningTile, turnState, reachState, fromStock, stockCount) {
+export function getHands(readyCounts, winningTile, turnState, reachState, fromStock, restCount) {
   const specialHands = [];
   let maxHands = [];
   let maxScore = 0;
@@ -484,13 +484,13 @@ export function getHands(readyCounts, winningTile, turnState, reachState, fromSt
     } else if (turnState === TURN_EARTH) {
       specialHands.push(HAND_BLESSING_OF_EARTH);
     } else {
-      if (!stockCount) {
+      if (!restCount) {
         maxHands.push(HAND_LAST_STOCK);
       }
       maxHands.push(HAND_WIN_FROM_STOCK);
     }
   } else {
-    if (!stockCount) {
+    if (!restCount) {
       maxHands.push(HAND_LAST_DISCARD);
     }
   }
@@ -518,7 +518,11 @@ export function getHands(readyCounts, winningTile, turnState, reachState, fromSt
 export class Base {
   constructor() {
     this.concealedTiles = [];
+    this.concealedCounts = EMPTY_TILE_COUNTS.slice();
     this.discardedTiles = [];
+    this.discardedCounts = EMPTY_TILE_COUNTS.slice();
+    this.invisibleCounts = FULL_TILE_COUNTS.slice();
+    this.safeCounts = EMPTY_TILE_COUNTS.slice();
     this.turnState = 0;
     this.reachState = 0;
     this.reachableMap = new Map();
@@ -534,19 +538,19 @@ export class Base {
     return this.score + this.gameScore;
   }
 
-  isReachable() {
+  isStateReachable() {
     return this.reachState === REACHABLE;
   }
 
-  isReaching() {
+  isStateReaching() {
     return this.reachState === REACHING;
   }
 
-  setReaching(reaching) {
+  setStateReaching(reaching) {
     this.reachState = reaching ? REACHING : REACHABLE;
   }
 
-  isReached() {
+  isStateReached() {
     return this.reachState >= REACHED;
   }
 
@@ -558,15 +562,17 @@ export class Base {
     return this.winnableSet.has(tile);
   }
 
+  isDrawn() {
+    return this.concealedTiles.length % 3 === 2;
+  }
+
   canWin() {
-    return (
-      this.concealedTiles.length % 3 === 2 && this.isTileWinnable(this.concealedTiles[this.concealedTiles.length - 1])
-    );
+    return this.isDrawn() && this.isTileWinnable(this.concealedTiles[this.concealedTiles.length - 1]);
   }
 
   updateReachable() {
-    if (!this.isReached() && !this.canWin()) {
-      this.reachableMap = getReachableMap(getTileCounts(this.concealedTiles), getTileCounts(this.discardedTiles));
+    if (!this.isStateReached() && !this.canWin()) {
+      this.reachableMap = getReachableMap(this.concealedCounts, this.discardedCounts);
       this.reachState = this.reachableMap.size ? REACHABLE : 0;
     }
   }
@@ -578,34 +584,74 @@ export class Base {
         this.reachState = 0;
       }
     }
-    if (this.isReaching()) {
+    if (this.isStateReaching()) {
       this.reachState = this.turnState ? DOUBLE_REACHED : REACHED;
       this.reachedDiscardedIndex = this.discardedTiles.length - 1;
       this.turnState = TURN_ONESHOT;
+      this.safeCounts = this.discardedCounts.slice();
     } else {
       this.turnState = 0;
     }
   }
 
   updateWinnableSet() {
-    this.winnableSet = getWinnableSet(getTileCounts(this.concealedTiles));
+    this.winnableSet = getWinnableSet(this.concealedCounts);
   }
 
   sortTiles() {
     this.concealedTiles.sort((a, b) => a - b);
   }
+
+  deal(tiles) {
+    this.concealedTiles = tiles;
+    this.concealedCounts = getTileCounts(this.concealedTiles);
+    for (const t of TILES) {
+      this.invisibleCounts[t] -= this.concealedCounts[t];
+    }
+    this.updateWinnableSet();
+    this.sortTiles();
+  }
+
+  draw(tile) {
+    this.concealedTiles.push(tile);
+    this.concealedCounts[tile]++;
+    this.invisibleCounts[tile]--;
+  }
+
+  discard(tile) {
+    this.discardedTiles.push(this.concealedTiles.splice(this.concealedTiles.lastIndexOf(tile), 1)[0]);
+    this.concealedCounts[tile]--;
+    this.discardedCounts[tile]++;
+    this.updateReached();
+    this.updateWinnableSet();
+    this.sortTiles();
+  }
+}
+
+export function generateStockTiles(random) {
+  const stockTiles = [...TILES, ...TILES, ...TILES, ...TILES];
+  random.shuffle(stockTiles);
+  return stockTiles;
 }
 
 export class Game {
-  constructor() {
-    this.seed = 0;
-    this.random = null;
-    this.stockTiles = [];
+  constructor(playerCount, dealCount, dealerIndex, stockTiles) {
+    this.playerCount = playerCount;
+    this.dealCount = dealCount;
+    this.dealerIndex = dealerIndex;
+    this.stockTiles = stockTiles;
+    this.stockIndex = 0;
+    this.restCount = 14 * this.playerCount;
     this.bases = [];
-    this.dealerIndex = 0;
-    this.currentBaseIndex = -1;
-    this.winnerBaseIndex = -1;
-    this.loserBaseIndex = -1;
+    for (let i = 0; i < this.playerCount; i++) {
+      const base = new Base();
+      base.turnState = i === this.dealerIndex ? TURN_HEAVEN : TURN_EARTH;
+      base.place = base.nextPlace = ((i - this.dealerIndex + this.playerCount) % this.playerCount) + 1;
+      this.bases.push(base);
+    }
+    this.currentPlayerIndex = -1;
+    this.winnerIndex = -1;
+    this.loserIndex = -1;
     this.readyTiles = null;
     this.winningTile = 0;
     this.winningHands = null;
@@ -613,107 +659,216 @@ export class Game {
   }
 
   getCurrentBase() {
-    return this.bases[this.currentBaseIndex];
+    return this.bases[this.currentPlayerIndex];
   }
 
-  dealTiles(dealCount) {
-    this.random = new XorshiftRandom(this.seed > 0 ? this.seed : randomSeed(), 100);
-    this.stockTiles.push(...TILES, ...TILES, ...TILES, ...TILES);
-    this.random.shuffle(this.stockTiles);
+  dealTiles() {
     for (const base of this.bases) {
-      base.concealedTiles.push(...this.stockTiles.splice(0, dealCount));
-      base.updateWinnableSet();
-      base.sortTiles();
+      const nextStockIndex = this.stockIndex + this.dealCount;
+      base.deal(this.stockTiles.slice(this.stockIndex, nextStockIndex));
+      this.stockIndex = nextStockIndex;
     }
-    this.stockTiles = this.stockTiles.slice(0, 14 * this.bases.length);
   }
 
   pickTile() {
-    return this.stockTiles.pop();
+    this.restCount--;
+    return this.stockTiles[this.stockIndex++];
+  }
+
+  isRestReachable() {
+    return this.restCount > 0;
   }
 
   drawTile(tile) {
-    this.currentBaseIndex =
-      this.currentBaseIndex >= 0 ? (this.currentBaseIndex + 1) % this.bases.length : this.dealerIndex;
-    const currentBase = this.getCurrentBase();
-    currentBase.concealedTiles.push(tile);
-    if (this.stockTiles.length) {
-      currentBase.updateReachable();
+    this.currentPlayerIndex =
+      this.currentPlayerIndex >= 0 ? (this.currentPlayerIndex + 1) % this.bases.length : this.dealerIndex;
+    const base = this.getCurrentBase();
+    base.draw(tile);
+    if (this.isRestReachable()) {
+      base.updateReachable();
     }
   }
 
   discardTile(tile) {
-    const currentBase = this.getCurrentBase();
-    currentBase.discardedTiles.push(
-      ...currentBase.concealedTiles.splice(currentBase.concealedTiles.lastIndexOf(tile), 1),
+    for (let p = 0; p < this.playerCount; p++) {
+      const base = this.bases[p];
+      if (p === this.currentPlayerIndex) {
+        base.discard(tile);
+      } else {
+        base.invisibleCounts[tile]--;
+        if (base.isStateReached()) {
+          base.safeCounts[tile]++;
+        }
+      }
+    }
+  }
+
+  drawGame() {
+    const placeBases = this.bases.slice().sort((a, b) => {
+      return b.nextScore - a.nextScore;
+    });
+    for (let i = 0; i < placeBases.length; i++) {
+      placeBases[i].nextPlace = i + 1;
+    }
+  }
+
+  winGame(winnerIndex, loserIndex, winningTile) {
+    this.winnerIndex = winnerIndex;
+    const winnerBase = this.bases[winnerIndex];
+    const fromStock = loserIndex < 0;
+    if (fromStock) {
+      this.readyTiles = winnerBase.concealedTiles.slice();
+      this.winningTile = this.readyTiles.pop();
+    } else {
+      this.readyTiles = winnerBase.concealedTiles;
+      this.winningTile = winningTile;
+    }
+    this.winningHands = getHands(
+      getTileCounts(this.readyTiles),
+      this.winningTile,
+      winnerBase.turnState,
+      winnerBase.reachState,
+      fromStock,
+      this.restCount,
     );
-    currentBase.updateReached();
-    currentBase.updateWinnableSet();
-    currentBase.sortTiles();
-  }
-
-  think() {
-    const base = this.getCurrentBase();
-    const counts = getTileCounts(base.concealedTiles);
-    const scores = Array(TILE_LAST + 1).fill(0);
-    const rankScores = [0, 1, 2, 3, 4, 4, 4, 3, 2, 1];
-    for (const tile of TILES) {
-      const rank = getTileRank(tile);
-      let score = counts[tile] * 5 + rankScores[rank];
-      if (rank >= 2) {
-        if (counts[tile - 1]) {
-          score += 10;
-        }
-        if (rank >= 3 && counts[tile - 2]) {
-          score += 5;
-        }
+    this.handsScore = this.winningHands.reduce((sc, h) => ((sc += getHandScore(h, this.dealCount)), sc), 0);
+    const winnerScore = this.handsScore * Math.max(this.playerCount - 1, 1);
+    winnerBase.gameScore = winnerScore;
+    if (fromStock) {
+      for (let i = 1; i < this.playerCount; i++) {
+        const base = this.bases[(winnerIndex + i) % this.playerCount];
+        base.gameScore = -this.handsScore;
       }
-      if (rank <= 8) {
-        if (counts[tile + 1]) {
-          score += 10;
-        }
-        if (rank <= 7 && counts[tile + 2]) {
-          score += 5;
-        }
-      }
-      scores[tile] = score;
+    } else {
+      this.loserIndex = loserIndex;
+      const loserBase = this.bases[loserIndex];
+      loserBase.gameScore = -winnerScore;
     }
-    let minScore = Number.MAX_SAFE_INTEGER;
-    let minTiles = [];
-    for (const tile of TILES) {
-      if (!counts[tile]) {
-        continue;
-      }
-      const score = scores[tile];
-      if (score <= minScore) {
-        if (score < minScore) {
-          minScore = score;
-          minTiles = [tile];
-        } else if (score === minScore) {
-          minTiles.push(tile);
-        }
-      }
-    }
-    const tile = minTiles[randomInt(minTiles.length)];
-    return [tile, base.isTileReachable(tile)];
+    this.drawGame();
   }
 }
 
-const PLAYER_NAMES = ['You', 'Alice', 'Bob', 'Carol'];
-
-export class Player {
-  constructor(name) {
-    this.name = name;
-  }
+function think0(game) {
+  const base = game.getCurrentBase();
+  const tile = base.concealedCounts.findIndex((c) => c);
+  return [tile, game.isRestReachable() && base.isTileReachable(tile)];
 }
+
+function think1(game) {
+  const base = game.getCurrentBase();
+  if (game.isRestReachable() && base.isStateReachable()) {
+    let maxCount = 0;
+    let maxTile = 0;
+    for (const [tile, winnableSet] of base.reachableMap) {
+      if (winnableSet.size > maxCount) {
+        maxCount = winnableSet.size;
+        maxTile = tile;
+      }
+    }
+    return [maxTile, true];
+  }
+  let minScore = Number.MAX_SAFE_INTEGER;
+  let minTile = 0;
+  const rankScores = [0, 1, 2, 3, 4, 4, 4, 3, 2, 1];
+  for (const tile of TILES) {
+    if (!base.concealedCounts[tile]) {
+      continue;
+    }
+    const rank = getTileRank(tile);
+    let score = base.concealedCounts[tile] * 10 + rankScores[rank];
+    if (rank >= 2) {
+      if (base.concealedCounts[tile - 1]) {
+        score += 10;
+      }
+      if (rank >= 3 && base.concealedCounts[tile - 2]) {
+        score += 5;
+      }
+    }
+    if (rank <= 8) {
+      if (base.concealedCounts[tile + 1]) {
+        score += 10;
+      }
+      if (rank <= 7 && base.concealedCounts[tile + 2]) {
+        score += 5;
+      }
+    }
+    if (score < minScore) {
+      minScore = score;
+      minTile = tile;
+    }
+  }
+  return [minTile, false];
+}
+
+function think2(game) {
+  const base = game.getCurrentBase();
+  if (game.isRestReachable() && base.isStateReachable()) {
+    let maxScore = 0;
+    let maxTile = 0;
+    for (const [tile, winnableSet] of base.reachableMap) {
+      let score = 0;
+      for (const t of winnableSet) {
+        if (base.invisibleCounts[t]) {
+          score += 10 + base.invisibleCounts[t];
+        }
+      }
+      if (score > maxScore) {
+        maxScore = score;
+        maxTile = tile;
+      }
+    }
+    if (maxTile) {
+      return [maxTile, true];
+    }
+  }
+  let minScore = Number.MAX_SAFE_INTEGER;
+  let minTile = 0;
+  const rankScores = [0, 1, 2, 3, 4, 4, 4, 3, 2, 1];
+  for (const tile of TILES) {
+    if (!base.concealedCounts[tile]) {
+      continue;
+    }
+    const rank = getTileRank(tile);
+    let score = base.concealedCounts[tile] * 10 + rankScores[rank];
+    for (let i = 1; i < game.playerCount; i++) {
+      if (game.bases[(game.currentPlayerIndex + i) % game.playerCount].safeCounts[tile]) {
+        score -= 20;
+      }
+    }
+    if (rank >= 2) {
+      if (base.concealedCounts[tile - 1]) {
+        score += 10;
+      }
+      if (rank >= 3 && base.concealedCounts[tile - 2]) {
+        score += 5;
+      }
+    }
+    if (rank <= 8) {
+      if (base.concealedCounts[tile + 1]) {
+        score += 10;
+      }
+      if (rank <= 7 && base.concealedCounts[tile + 2]) {
+        score += 5;
+      }
+    }
+    if (score < minScore) {
+      minScore = score;
+      minTile = tile;
+    }
+  }
+  return [minTile, false];
+}
+
+export const THINKS = [think0, think1, think2];
 
 export class Match {
-  constructor() {
-    this.playerCount = 0;
-    this.dealCount = 0;
-    this.roundCount = 0;
-    this.players = null;
-    this.games = null;
+  constructor(playerCount, dealCount, roundCount, seed) {
+    this.playerCount = playerCount;
+    this.dealCount = dealCount;
+    this.roundCount = roundCount;
+    this.seed = seed;
+    this.random = new XorshiftRandom(this.seed);
+    this.games = [];
   }
 
   getCurrentGame() {
@@ -721,23 +876,8 @@ export class Match {
   }
 
   startGame() {
-    this.manualPlayerIndex = randomInt(this.playerCount);
-    let playerNames = PLAYER_NAMES.slice(1);
-    shuffleArray(playerNames);
-    playerNames = playerNames.slice(0, this.playerCount - 1);
-    playerNames.splice(this.manualPlayerIndex, 0, PLAYER_NAMES[0]);
-    this.players = [];
-    this.games = [];
-    const game = new Game();
-    for (let i = 0; i < this.playerCount; i++) {
-      const player = new Player(playerNames[i]);
-      this.players.push(player);
-      const base = new Base();
-      base.turnState = i === 0 ? TURN_HEAVEN : TURN_EARTH;
-      base.place = base.nextPlace = i + 1;
-      game.bases.push(base);
-    }
-    game.dealTiles(this.dealCount);
+    const game = new Game(this.playerCount, this.dealCount, 0, generateStockTiles(this.random));
+    game.dealTiles();
     this.games.push(game);
   }
 
@@ -747,77 +887,19 @@ export class Match {
 
   nextGame() {
     const lastGame = this.getCurrentGame();
-    const nextGame = new Game();
-    nextGame.dealerIndex = (lastGame.dealerIndex + 1) % this.playerCount;
+    const nextGame = new Game(
+      this.playerCount,
+      this.dealCount,
+      (lastGame.dealerIndex + 1) % this.playerCount,
+      generateStockTiles(this.random),
+    );
     for (let i = 0; i < this.playerCount; i++) {
       const lastBase = lastGame.bases[i];
-      const nextBase = new Base();
-      nextBase.turnState = i === 0 ? TURN_HEAVEN : TURN_EARTH;
+      const nextBase = nextGame.bases[i];
       nextBase.score = lastBase.nextScore;
       nextBase.place = lastBase.nextPlace;
-      nextGame.bases.push(nextBase);
     }
-    nextGame.dealTiles(this.dealCount);
+    nextGame.dealTiles();
     this.games.push(nextGame);
-  }
-
-  drawGame() {
-    const placeBases = this.getCurrentGame()
-      .bases.slice()
-      .sort((a, b) => {
-        return b.nextScore - a.nextScore;
-      });
-    for (let i = 0; i < placeBases.length; i++) {
-      placeBases[i].nextPlace = i + 1;
-    }
-  }
-
-  winGame(winnerBaseIndex, loserBaseIndex, winningTile) {
-    const currentGame = this.getCurrentGame();
-    currentGame.winnerBaseIndex = winnerBaseIndex;
-    const winnerBase = currentGame.bases[winnerBaseIndex];
-    const fromStock = loserBaseIndex < 0;
-    if (fromStock) {
-      currentGame.readyTiles = winnerBase.concealedTiles.slice();
-      currentGame.winningTile = currentGame.readyTiles.pop();
-    } else {
-      currentGame.readyTiles = winnerBase.concealedTiles;
-      currentGame.winningTile = winningTile;
-    }
-    currentGame.winningHands = getHands(
-      getTileCounts(currentGame.readyTiles),
-      currentGame.winningTile,
-      winnerBase.turnState,
-      winnerBase.reachState,
-      fromStock,
-      currentGame.stockTiles.length,
-    );
-    currentGame.handsScore = currentGame.winningHands.reduce(
-      (sc, h) => ((sc += getHandScore(h, this.dealCount)), sc),
-      0,
-    );
-    console.log(
-      currentGame.readyTiles,
-      currentGame.winningTile,
-      winnerBase.turnState,
-      winnerBase.reachState,
-      fromStock,
-      currentGame.stockTiles.length,
-      currentGame.winningHands,
-      currentGame.handsScore,
-    );
-    const winnerScore = currentGame.handsScore * Math.max(this.playerCount - 1, 1);
-    winnerBase.gameScore = winnerScore;
-    if (fromStock) {
-      for (let i = 1; i < this.playerCount; i++) {
-        const base = currentGame.bases[(winnerBaseIndex + i) % this.playerCount];
-        base.gameScore = -currentGame.handsScore;
-      }
-    } else {
-      currentGame.loserBaseIndex = loserBaseIndex;
-      const loserBase = currentGame.bases[loserBaseIndex];
-      loserBase.gameScore = -winnerScore;
-    }
-    this.drawGame();
   }
 }

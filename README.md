@@ -1,11 +1,12 @@
 # Small Mahjong
 
-A simplified [Japanese mahjong](https://en.wikipedia.org/wiki/Japanese_mahjong) without melding and honor tiles
+A simplified [Japanese riichi mahjong](https://en.wikipedia.org/wiki/Japanese_mahjong) without melding and honor tiles
+
+Repo: https://github.com/usumerican/smallmahjong
 
 ## Playables in browser
 
 - [English](https://smallmahjong.pages.dev/en/)
-
 - [Japanese](https://smallmahjong.pages.dev/ja/)
 
 ## Rules
@@ -14,7 +15,7 @@ Ref: https://en.wikipedia.org/wiki/Japanese_mahjong
 
 ### Overview
 
-This application is played with 4 or less players, you and AI opponents.
+This application is played with 4 or less players (you and AI opponents).
 
 It uses 108 tiles of 27 different types.
 
@@ -25,9 +26,9 @@ Each tile type has a suit and a rank.
 
 Tile groups are
 
-- Twins: 2 tiles of the same suit and the same rank
-- Triplets: 3 tiles of the same suit and the same rank
-- Sequence: 3 tiles of the same suit and consecutive ranks
+- Twins: 2 tiles of the same rank in the same suit
+- Triplets: 3 tiles of the same rank in the same suit
+- Sequence: 3 tiles of the consecutive ranks in the same suit
 - Meld: Triplets or Sequence
 
 The number of stock tiles is 14 per player.
@@ -59,12 +60,12 @@ In case of win by Tsumo, all players except the winner lose the total points of 
 
 In case of no more tiles in the stock, the game is drawn.
 
-### Differences from japanese mahjong
+### Differences from Japanese riichi mahjong
 
-- Cannnot open meld
-- Cannnot declare Ron without Reach
+- The players can NOT open meld
+- The players can NOT declare Ron without Reach
 - No honor tiles
-- no dora tiles
+- No dora tiles
 - Simple scoring
 - No repeating game by dealer
 - No abortive draws

@@ -8,24 +8,128 @@
     <link rel="apple-touch-icon" href="icon.png" />
   </head>
   <body>
-    <h1>Small Mahjong</h1>
+    <h1 id="small-mahjong">Small Mahjong</h1>
     <p>
-      A simplified <a href="https://en.wikipedia.org/wiki/Japanese_mahjong">Japanese mahjong</a> without melding and
-      honor tiles
+      A simplified <a href="https://en.wikipedia.org/wiki/Japanese_mahjong">Japanese riichi mahjong</a> without melding
+      and honor tiles
     </p>
-    <h2>Playables in browser</h2>
+    <p>Repo: <a href="https://github.com/usumerican/smallmahjong">https://github.com/usumerican/smallmahjong</a></p>
+    <h2 id="playables-in-browser">Playables in browser</h2>
     <ul>
-      <li>
-        <p><a href="en/">English</a></p>
-      </li>
-      <li>
-        <p><a href="ja/">Japanese</a></p>
-      </li>
+      <li><a href="en/">English</a></li>
+      <li><a href="ja/">Japanese</a></li>
     </ul>
-    <h2>Resources</h2>
+    <h2 id="rules">Rules</h2>
+    <p>
+      Ref: <a href="https://en.wikipedia.org/wiki/Japanese_mahjong">https://en.wikipedia.org/wiki/Japanese_mahjong</a>
+    </p>
+    <h3 id="overview">Overview</h3>
+    <p>This application is played with 4 or less players (you and AI opponents).</p>
+    <p>It uses 108 tiles of 27 different types.</p>
+    <p>Each tile type has a suit and a rank.</p>
+    <ul>
+      <li>Suits: ▲ (red Angle), ■ (green Box), ◉ (blue Circle)</li>
+      <li>Ranks: 1, 2, 3, 4, 5, 6, 7, 8, 9</li>
+    </ul>
+    <p>Tile groups are</p>
+    <ul>
+      <li>Twins: 2 tiles of the same rank in the same suit</li>
+      <li>Triplets: 3 tiles of the same rank in the same suit</li>
+      <li>Sequence: 3 tiles of the consecutive ranks in the same suit</li>
+      <li>Meld: Triplets or Sequence</li>
+    </ul>
+    <p>The number of stock tiles is 14 per player.</p>
+    <p>The number of dealt tiles can be selected from 4, 7, 10 and 13.</p>
+    <p>The winning hand consists of</p>
+    <ul>
+      <li>4 dealt tiles: 1 twins and 1 meld</li>
+      <li>7 dealt tiles: 1 twins and 2 melds</li>
+      <li>10 dealt tiles: 1 twins and 3 melds</li>
+      <li>13 dealt tiles: 1 twins and 4 melds, or 7 twins</li>
+    </ul>
+    <h3 id="playing-game">Playing Game</h3>
+    <p>
+      After all the players have been dealt their tiles, the players take turns drawing one tile from the stock and
+      discarding one of the tiles they do not need in order to win.
+    </p>
+    <p>When the remaining one tile is enough to win, the player can declare Reach.</p>
+    <p>
+      If the player declares Reach, the hand cannot be changed, but the player can declare Ron on the tile discarded by
+      the opponent and win.
+    </p>
+    <p>
+      Even if you do not declare Reach, you can still declare Tsumo and win if the tiles you have drawn are in winning
+      hand.
+    </p>
+    <p>When a player wins, the winner gets the total points of the winning conditions per opponent player.</p>
+    <p>In case of win by Ron, the player who discards the winning tile loses the winner's score alone.</p>
+    <p>In case of win by Tsumo, all players except the winner lose the total points of the winning conditions.</p>
+    <p>In case of no more tiles in the stock, the game is drawn.</p>
+    <h3 id="differences-from-japanese-mahjong">Differences from Japanese riichi mahjong</h3>
+    <ul>
+      <li>The players can NOT open meld</li>
+      <li>The players can NOT declare Ron without Reach</li>
+      <li>No honor tiles</li>
+      <li>No dora tiles</li>
+      <li>Simple scoring</li>
+      <li>No repeating game by dealer</li>
+      <li>No abortive draws</li>
+    </ul>
+    <h2 id="winning-conditions">Winning Conditions</h2>
+    <p>
+      Ref:
+      <a href="https://en.wikipedia.org/wiki/Japanese_mahjong_yaku"
+        >https://en.wikipedia.org/wiki/Japanese_mahjong_yaku</a
+      >
+    </p>
     <ul>
       <li>
-        <p><a href="https://github.com/usumerican/smallmahjong">Repository in GitHub</a></p>
+        1 point
+        <ul>
+          <li>Reach</li>
+          <li>One Shot</li>
+          <li>Last Stock</li>
+          <li>Last Discard</li>
+          <li>Win from Stock</li>
+          <li>All Middles</li>
+          <li>All Sequences</li>
+          <li>Pure Double Sequences</li>
+        </ul>
+      </li>
+      <li>
+        2 points
+        <ul>
+          <li>Double Reach</li>
+          <li>Mixed Triple Sequences</li>
+          <li>Mixed Triple Triplets</li>
+          <li>Pure Straight</li>
+          <li>Seven twins</li>
+          <li>All Triplets</li>
+          <li>Three Closed Triplets</li>
+        </ul>
+      </li>
+      <li>
+        3 points
+        <ul>
+          <li>All Outside</li>
+          <li>Two Pure Double Sequences</li>
+        </ul>
+      </li>
+      <li>
+        3, 4, 5, 6 points (according to dealt tiles)
+        <ul>
+          <li>Full Flush</li>
+        </ul>
+      </li>
+      <li>
+        16 points (special conditions)
+        <ul>
+          <li>Blessing of Heaven</li>
+          <li>Blessing of Earth</li>
+          <li>All Terminals</li>
+          <li>Four Closed Triplets</li>
+          <li>Nine Gates</li>
+        </ul>
       </li>
     </ul>
   </body>
