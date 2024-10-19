@@ -1,6 +1,8 @@
 /* globals process */
 
-import { Match, THINKS, XorshiftRandom } from './lib.js';
+import { initEngine } from './engine_node.js';
+import { getThink, Match } from './lib.js';
+import { XorshiftRandom } from './random.js';
 
 function simulateGame(game, playerThinks) {
   GAME: while (game.restCount) {
@@ -36,18 +38,20 @@ class Data {
   }
 }
 
-(() => {
-  const yourLevel = process.argv[2] || 1;
+(async () => {
+  const yourLevel = parseInt(process.argv[2]) || 0;
   console.log('yourLevel: ' + yourLevel);
-  const opponentLevel = process.argv[3] || 0;
+  const opponentLevel = parseInt(process.argv[3]) || 0;
   console.log('opponentLevel: ' + opponentLevel);
-  const matchCount = process.argv[4] || 100;
+  const matchCount = parseInt(process.argv[4]) || 100;
   console.log('matchCount: ' + matchCount);
   const playerCount = 4;
   const dealCount = 13;
   const roundCount = 4;
+  const engine = await initEngine();
+  const opponentThink = getThink(engine, opponentLevel);
+  const playerThinks = [getThink(engine, yourLevel), opponentThink, opponentThink, opponentThink];
   const playerData = [new Data(), new Data(), new Data(), new Data()];
-  const playerThinks = [THINKS[yourLevel], THINKS[opponentLevel], THINKS[opponentLevel], THINKS[opponentLevel]];
   const random = new XorshiftRandom();
   for (let m = 0; m < matchCount; m++) {
     const seed = random.nextInt();

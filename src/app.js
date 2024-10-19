@@ -1,16 +1,20 @@
 /* globals __APP_VERSION__, T */
 
 import {
+  DEAL_COUNTS,
   getHandName,
   getHandScore,
+  getThink,
   getTileRank,
   getTileSuit,
   Match,
-  randomInt,
-  randomSeed,
-  shuffleArray,
-  THINKS,
+  SA,
+  SB,
+  SC,
+  TILE_COUNT,
 } from './lib';
+import { randomInt, randomSeed, shuffleArray } from './random';
+import { initEngine } from './engine_browser';
 
 function on(target, type, listner) {
   target.addEventListener(type, (ev) => {
@@ -35,11 +39,13 @@ function isRectContains([rx, ry, rw, rh], [px, py]) {
 }
 
 on(window, 'DOMContentLoaded', async () => {
+  const engine = await initEngine();
+  const think = getThink(engine);
+
   const settingsKey = 'smallmahjong';
   const settings = JSON.parse(localStorage.getItem(settingsKey)) || {};
 
   const playerCounts = [1, 2, 3, 4];
-  const dealCounts = [4, 7, 10, 13];
   const roundCounts = [0, 1, 2, 4];
   const modes = [0, 1];
   const nodeNames = [T('Normal'), T('Open')];
@@ -47,8 +53,8 @@ on(window, 'DOMContentLoaded', async () => {
   if (!playerCounts.includes(settings.playerCount)) {
     settings.playerCount = playerCounts[1];
   }
-  if (!dealCounts.includes(settings.dealCount)) {
-    settings.dealCount = dealCounts[1];
+  if (!DEAL_COUNTS.includes(settings.dealCount)) {
+    settings.dealCount = DEAL_COUNTS[1];
   }
   if (!roundCounts.includes(settings.roundCount)) {
     settings.roundCount = roundCounts[1];
@@ -80,7 +86,7 @@ on(window, 'DOMContentLoaded', async () => {
   const playerSelectRect = [0, -4 * lineH, 8 * lineH, 2 * lineH];
   const playerOptionW = playerSelectRect[2] / playerCounts.length;
   const dealSelectRect = [0, -2 * lineH, 8 * lineH, 2 * lineH];
-  const dealOptionW = dealSelectRect[2] / dealCounts.length;
+  const dealOptionW = dealSelectRect[2] / DEAL_COUNTS.length;
   const roundSelectRect = [0, 0, 8 * lineH, 2 * lineH];
   const roundOptionW = roundSelectRect[2] / roundCounts.length;
   const modeSelectRect = [0, 2 * lineH, 8 * lineH, 2 * lineH];
@@ -96,6 +102,7 @@ on(window, 'DOMContentLoaded', async () => {
   let match;
   let playerPositions;
   let selectedTileIndex;
+  let playerNorms;
 
   const discardedCol = 7;
   let tableTileW, tableTileH;
@@ -135,25 +142,25 @@ on(window, 'DOMContentLoaded', async () => {
       if (angle) {
         context.rotate(angle);
       }
-      context.fillStyle = tile ? tileColor || '#fff' : '#fd0';
+      context.fillStyle = tile < TILE_COUNT ? tileColor || '#fff' : '#fd0';
       context.fillRect(-w / 2, -h / 2, w, h);
       context.strokeStyle = '#000';
       context.strokeRect(-w / 2, -h / 2, w, h);
-      if (tile) {
+      if (tile < TILE_COUNT) {
         const suit = getTileSuit(tile);
-        context.fillStyle = ['#f00', '#090', '#00f'][suit - 1];
+        context.fillStyle = ['#f00', '#090', '#00f'][suit];
         context.font = Math.floor(0.5 * w) + 'px Verdana, sans-serif';
-        context.fillText(getTileRank(tile), 0, 0.2 * h);
-        if (suit === 1) {
+        context.fillText(getTileRank(tile) + 1, 0, 0.2 * h);
+        if (suit === SA) {
           context.beginPath();
           context.moveTo(0, -0.35 * h);
           context.lineTo(0.15 * h, -0.05 * h);
           context.lineTo(-0.15 * h, -0.05 * h);
           context.closePath();
           context.fill();
-        } else if (suit === 2) {
+        } else if (suit === SB) {
           context.fillRect(-0.15 * h, -0.35 * h, 0.3 * h, 0.3 * h);
-        } else if (suit === 3) {
+        } else if (suit === SC) {
           context.beginPath();
           context.arc(0, -0.2 * h, 0.1 * h, 0, 2 * Math.PI);
           context.closePath();
@@ -286,8 +293,8 @@ on(window, 'DOMContentLoaded', async () => {
 
     const dealCy = getRectCenterY(dealSelectRect);
     context.fillText(T('Dealt tiles'), labelX, dealCy);
-    for (let i = 0; i < dealCounts.length; i++) {
-      const value = dealCounts[i];
+    for (let i = 0; i < DEAL_COUNTS.length; i++) {
+      const value = DEAL_COUNTS[i];
       const optionX = dealSelectRect[0] + dealOptionW * i;
       if (value === settings.dealCount) {
         context.strokeRect(optionX, dealCy - dealSelectRect[3] / 2, dealOptionW, dealSelectRect[3]);
@@ -367,7 +374,7 @@ on(window, 'DOMContentLoaded', async () => {
       fillDoubleText(
         context,
         T(playerNames[playerIndex]) + (playerIndex === currentGame.dealerIndex ? T('(D)') : ''),
-        '#' + base.place + ': ' + base.score,
+        (settings.mode ? playerNorms[playerIndex] + ' ' : '') + '#' + base.place + ': ' + base.score,
         x,
         y,
         2.5 * tableTileW,
@@ -410,7 +417,7 @@ on(window, 'DOMContentLoaded', async () => {
           for (let concealedIndex = 0; concealedIndex < base.concealedTiles.length; concealedIndex++) {
             renderTile(
               context,
-              settings.mode || scene === FINISHED ? base.concealedTiles[concealedIndex] : 0,
+              settings.mode || scene === FINISHED ? base.concealedTiles[concealedIndex] : TILE_COUNT,
               x + tableTileW * ((concealedIndex < match.dealCount ? 0.5 : 0.7) + concealedIndex),
               cy,
               tableTileW,
@@ -600,11 +607,22 @@ on(window, 'DOMContentLoaded', async () => {
     updateCanvas();
   }
 
+  function updatePlayerNorm(playerIndex) {
+    const currentGame = match.getCurrentGame();
+    playerNorms[playerIndex] = engine.solveWinnableNorm(
+      currentGame.dealCount + 1,
+      currentGame.bases[playerIndex].concealedSummary,
+    );
+  }
+
   async function doDiscard(tile) {
     const currentGame = match.getCurrentGame();
     const currentBase = currentGame.getCurrentBase();
     const reaching = currentBase.isStateReaching();
     currentGame.discardTile(tile);
+    if (settings.mode) {
+      updatePlayerNorm(currentGame.currentPlayerIndex);
+    }
     if (reaching) {
       await showMessage(currentGame.currentPlayerIndex, T('Reach!'));
     }
@@ -654,7 +672,7 @@ on(window, 'DOMContentLoaded', async () => {
         doWinFromStock();
       } else {
         setTimeout(() => {
-          const [t, reaching] = THINKS[THINKS.length - 1](currentGame);
+          const [t, reaching] = think(currentGame);
           currentBase.setStateReaching(reaching);
           doDiscard(t);
         }, thinkTime);
@@ -682,6 +700,12 @@ on(window, 'DOMContentLoaded', async () => {
     for (let i = 0; i < match.playerCount; i++) {
       playerPositions[(manualPlayerIndex + i) % match.playerCount] =
         match.playerCount === 2 ? i * 2 : match.playerCount === 3 ? Math.floor(i * 1.5) : i;
+    }
+    if (settings.mode) {
+      playerNorms = [];
+      for (let i = 0; i < match.playerCount; i++) {
+        updatePlayerNorm(i);
+      }
     }
     localStorage.setItem(settingsKey, JSON.stringify(settings));
     doResize();
@@ -725,7 +749,7 @@ on(window, 'DOMContentLoaded', async () => {
       } else if (isRectContains(playerSelectRect, pt)) {
         settings.playerCount = playerCounts[Math.floor((pt[0] - playerSelectRect[0]) / playerOptionW)];
       } else if (isRectContains(dealSelectRect, pt)) {
-        settings.dealCount = dealCounts[Math.floor((pt[0] - dealSelectRect[0]) / dealOptionW)];
+        settings.dealCount = DEAL_COUNTS[Math.floor((pt[0] - dealSelectRect[0]) / dealOptionW)];
       } else if (isRectContains(roundSelectRect, pt)) {
         settings.roundCount = roundCounts[Math.floor((pt[0] - roundSelectRect[0]) / roundOptionW)];
       } else if (isRectContains(modeSelectRect, pt)) {

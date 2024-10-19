@@ -1,6 +1,6 @@
 {
   "name": "smallmahjong",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "type": "module",
   "license": "AGPL-3.0",
   "author": "usumerican",
@@ -10,6 +10,8 @@
     "url": "git+https://github.com/usumerican/smallmahjong.git"
   },
   "scripts": {
+    "zig:test": "zig build test",
+    "zig:wasm": "zig build wasm -Dstrip=true --release=fast --prefix src --verbose --summary all",
     "dev": "vite",
     "test": "vitest run",
     "build": "vite build",

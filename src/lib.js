@@ -1,87 +1,62 @@
-export function randomInt(n) {
-  return Math.floor(n * Math.random());
-}
+import { XorshiftRandom } from './random.js';
 
-export function shuffleArray(arr, len) {
-  let i = len || arr.length;
-  while (i) {
-    const j = randomInt(i);
-    const t = arr[--i];
-    arr[i] = arr[j];
-    arr[j] = t;
-  }
-}
-
-export function randomSeed() {
-  return randomInt(2 ** 32) | 0;
-}
-
-export class XorshiftRandom {
-  constructor(seed) {
-    this.x = 123456789;
-    this.y = 362436069;
-    this.z = 521288629;
-    this.w = seed | 0;
-  }
-
-  next() {
-    const t = this.x ^ (this.x << 11);
-    this.x = this.y;
-    this.y = this.z;
-    this.z = this.w;
-    this.w = this.w ^ (this.w >>> 19) ^ (t ^ (t >>> 8));
-    return this.w;
-  }
-
-  nextInt(n = 2 ** 32) {
-    return (this.next() >>> 0) % n;
-  }
-
-  shuffle(arr, len) {
-    let i = len || arr.length;
-    while (i) {
-      const j = this.nextInt(i);
-      const t = arr[--i];
-      arr[i] = arr[j];
-      arr[j] = t;
-    }
-  }
-}
-
+export const SA = 0;
+export const SB = 1;
+export const SC = 2;
 export const SUIT_COUNT = 3;
-export const SUITS = [...Array(SUIT_COUNT).keys()].map((i) => i + 1);
-export const SUIT_CODES = ['', 'A', 'B', 'C'];
+export const SUIT_CODES = ['A', 'B', 'C'];
 
+export const R1 = 0;
+export const R2 = 1;
+export const R3 = 2;
+export const R4 = 3;
+export const R5 = 4;
+export const R6 = 5;
+export const R7 = 6;
+export const R8 = 7;
+export const R9 = 8;
 export const RANK_COUNT = 9;
-export const RANKS = [...Array(RANK_COUNT).keys()].map((i) => i + 1);
-export const RANK_CODES = ['', '1', '2', '3', '4', '5', '6', '7', '8', '9'];
+export const RANK_CODES = ['1', '2', '3', '4', '5', '6', '7', '8', '9'];
 
 export function isRankTerminal(rank) {
-  return rank === 1 || rank === 9;
+  return rank === R1 || rank === R9;
 }
 
-export const TILES = SUITS.reduce((a, s) => (a.push(...RANKS.map((r) => getTile(s, r))), a), []);
-export const TILE_LAST = TILES[TILES.length - 1];
+export const TILE_COUNT = SUIT_COUNT * RANK_COUNT;
 
 export function getTile(suit, rank) {
-  return (RANK_COUNT + 1) * (suit - 1) + rank;
+  return RANK_COUNT * suit + rank;
 }
 
 export function getTileSuit(tile) {
-  return Math.ceil(tile / (RANK_COUNT + 1));
+  return Math.floor(tile / RANK_COUNT);
 }
 
 export function getTileRank(tile) {
-  return tile % (RANK_COUNT + 1);
+  return tile % RANK_COUNT;
 }
 
 export function isTileTerminal(tile) {
   return isRankTerminal(getTileRank(tile));
 }
 
+export function formatTiles(tiles) {
+  let code = '';
+  let suit;
+  for (const t of tiles) {
+    const s = getTileSuit(t);
+    if (s != suit) {
+      code += SUIT_CODES[s];
+      suit = s;
+    }
+    code += RANK_CODES[getTileRank(t)];
+  }
+  return code;
+}
+
 export function parseTiles(code) {
   const tiles = [];
-  let suit = 1;
+  let suit = 0;
   for (const ch of code) {
     const r = RANK_CODES.indexOf(ch);
     if (r >= 0) {
@@ -126,13 +101,13 @@ export function isGroupOutside(group) {
   return isTileTerminal(group[0]) || isTileTerminal(group[group.length - 1]);
 }
 
-export function getGroupFromWait(wait, tile) {
-  if (wait.length == 1 || isGroupIdentical(wait)) {
-    return [...wait, tile];
-  } else if (isGroupSequential(wait)) {
-    return tile < wait[0] ? [tile, ...wait] : [...wait, tile];
+export function getGroup(tiles, tile) {
+  if (tiles.length == 1 || isGroupIdentical(tiles)) {
+    return [...tiles, tile];
+  } else if (isGroupSequential(tiles)) {
+    return tile < tiles[0] ? [tile, ...tiles] : [...tiles, tile];
   }
-  return [wait[0], tile, wait[1]];
+  return [tiles[0], tile, tiles[1]];
 }
 
 export function compareGroups(a, b) {
@@ -149,47 +124,97 @@ export function compareGroups(a, b) {
   return 0;
 }
 
-const EMPTY_TILE_COUNTS = Array(TILE_LAST + 1).fill(0);
-const FULL_TILE_COUNTS = EMPTY_TILE_COUNTS.map((_, t) => (TILES.includes(t) ? 4 : 0));
+export const DEAL_COUNTS = [4, 7, 10, 13];
+export const DISTRIBUTION_FULL = 0o444444444;
 
-export function getTileCounts(tiles) {
-  const counts = EMPTY_TILE_COUNTS.slice();
-  for (const t of tiles) {
-    counts[t]++;
-  }
-  return counts;
+export function getDistributionFrequency(distribution, rank) {
+  return (distribution >> (rank * 3)) & 0o7;
 }
 
-export function* generateCombinations(counts, total = counts.reduce((s, c) => (s += c), 0), stack = []) {
-  if (total === 1) {
-    const t = counts.indexOf(1);
-    if (t > 0) {
+export function addDistributionFrequency(distribution, rank, frequency) {
+  return distribution + (frequency << (rank * 3));
+}
+
+export function getDistributionNorm(from, to) {
+  let n = 0;
+  for (let r = 0; r < RANK_COUNT; r++) {
+    n += Math.max(getDistributionFrequency(to, r) - getDistributionFrequency(from, r), 0);
+  }
+  return n;
+}
+
+export function* iterateSummary(summary, startTile = 0) {
+  if (startTile < TILE_COUNT) {
+    let r = getTileRank(startTile);
+    for (let s = getTileSuit(startTile); s < SUIT_COUNT; s++) {
+      const d = summary[s];
+      for (; r < RANK_COUNT; r++) {
+        const f = getDistributionFrequency(d, r);
+        if (f) {
+          yield [s, r, f];
+        }
+      }
+      r = 0;
+    }
+  }
+}
+
+export function findSummaryTile(summary, callback, startTile = 0) {
+  for (const [s, r, f] of iterateSummary(summary, startTile)) {
+    if (callback(f)) {
+      return getTile(s, r);
+    }
+  }
+  return TILE_COUNT;
+}
+
+export function getSummaryTileFrequency(summary, tile) {
+  return getDistributionFrequency(summary[getTileSuit(tile)], getTileRank(tile));
+}
+
+export function addSummaryTileFrequency(summary, tile, frequency) {
+  const s = getTileSuit(tile);
+  summary[s] = addDistributionFrequency(summary[s], getTileRank(tile), frequency);
+}
+
+export function getSummary(tiles) {
+  const summary = Array(SUIT_COUNT).fill(0);
+  for (const t of tiles) {
+    addSummaryTileFrequency(summary, t, 1);
+  }
+  return summary;
+}
+
+export function* generateCombinations(tileCount, summary, stack) {
+  if (tileCount === 1) {
+    const t = findSummaryTile(summary, (c) => c === 1);
+    if (t < TILE_COUNT) {
       yield [...stack, [t], [t]];
     }
     return;
-  } else if (total == 4) {
-    const twin1 = counts.findIndex((c) => c >= 2);
-    if (twin1 > 0) {
-      if (counts[twin1] === 4) {
+  } else if (tileCount == 4) {
+    const twin1 = findSummaryTile(summary, (c) => c >= 2);
+    if (twin1 < TILE_COUNT) {
+      if (getSummaryTileFrequency(summary, twin1) === 4) {
         return;
       }
-      const twin2 = counts.indexOf(2, twin1 + 1);
-      if (twin2 > 0) {
+      const twin2 = findSummaryTile(summary, (c) => c === 2, twin1 + 1);
+      if (twin2 < TILE_COUNT) {
         yield [...stack, [twin1, twin1], [twin2, twin2], [twin2]];
         yield [...stack, [twin2, twin2], [twin1, twin1], [twin1]];
         return;
       }
-      const rest = counts.slice();
-      rest[twin1] -= 2;
-      const t1 = rest.indexOf(1);
-      if (t1 > 0) {
-        const t2 = rest.indexOf(1, t1 + 1);
-        if (t2 > 0 && getTileSuit(t2) === getTileSuit(t1)) {
+      const rest = summary.slice();
+      addSummaryTileFrequency(rest, twin1, -2);
+      const t1 = findSummaryTile(rest, (c) => c === 1);
+      if (t1 < TILE_COUNT) {
+        const t2 = findSummaryTile(rest, (c) => c === 1, t1 + 1);
+        if (t2 < TILE_COUNT && getTileSuit(t2) === getTileSuit(t1)) {
           if (t2 == t1 + 1) {
             const rank = getTileRank(t2);
-            if (rank === 2) {
+            if (rank === R2) {
               yield [...stack, [twin1, twin1], [t1, t2], [t2 + 1]];
-            } else if (rank === 9) {
+            } else if (rank === R9) {
               yield [...stack, [twin1, twin1], [t1, t2], [t1 - 1]];
             } else {
               yield [...stack, [twin1, twin1], [t1, t2], [t1 - 1, t2 + 1]];
@@ -200,39 +225,38 @@ export function* generateCombinations(counts, total = counts.reduce((s, c) => (s
         }
       }
     }
-  } else if (total === 13) {
-    const allTwins = counts.reduce((arr, c, t) => (c === 2 && arr.push([t, t]), arr), []);
+  } else if (tileCount === 13) {
+    const allTwins = [];
+    for (let t = 0; (t = findSummaryTile(summary, (c) => c === 2, t)) < TILE_COUNT; t++) {
+      allTwins.push([t, t]);
+    }
     if (allTwins.length === 6) {
-      const t = counts.indexOf(1);
-      if (t > 0) {
+      const t = findSummaryTile(summary, (c) => c === 1);
+      if (t < TILE_COUNT) {
         yield [...allTwins, [t], [t]];
       }
     }
   }
-  const curr = stack.length ? stack[stack.length - 1][0] : 0;
-  for (const t1 of TILES) {
-    if (t1 < curr) {
-      continue;
-    }
-    const c = counts[t1];
-    if (c) {
-      if (c >= 3) {
+  for (let t1 = stack.length ? stack[stack.length - 1][0] : 0; t1 < TILE_COUNT; t1++) {
+    const f = getSummaryTileFrequency(summary, t1);
+    if (f) {
+      if (f >= 3) {
         stack.push([t1, t1, t1]);
-        const rest = counts.slice();
-        rest[t1] -= 3;
-        yield* generateCombinations(rest, total - 3, stack);
+        const rest = summary.slice();
+        addSummaryTileFrequency(rest, t1, -3);
+        yield* generateCombinations(tileCount - 3, rest, stack);
         stack.pop();
       }
       const t2 = t1 + 1;
-      if (counts[t2]) {
+      if (getSummaryTileFrequency(summary, t2)) {
         const t3 = t1 + 2;
-        if (counts[t3] && getTileSuit(t1) === getTileSuit(t3)) {
+        if (getSummaryTileFrequency(summary, t3) && getTileSuit(t1) === getTileSuit(t3)) {
           stack.push([t1, t2, t3]);
-          const rest = counts.slice();
-          rest[t1]--;
-          rest[t2]--;
-          rest[t3]--;
-          yield* generateCombinations(rest, total - 3, stack);
+          const rest = summary.slice();
+          addSummaryTileFrequency(rest, t1, -1);
+          addSummaryTileFrequency(rest, t2, -1);
+          addSummaryTileFrequency(rest, t3, -1);
+          yield* generateCombinations(tileCount - 3, rest, stack);
           stack.pop();
         }
       }
@@ -240,36 +264,24 @@ export function* generateCombinations(counts, total = counts.reduce((s, c) => (s
   }
 }
 
-export function getWinnableSet(concealedCounts) {
-  const winnableSet = new Set();
-  for (const combi of generateCombinations(concealedCounts)) {
-    for (const t of combi[combi.length - 1]) {
-      if (concealedCounts[t] < 4) {
-        winnableSet.add(t);
-      }
-    }
-  }
-  return winnableSet;
-}
-
-export function getReachableMap(concealedCounts, discardedCounts) {
+export function getReachableMap(concealedTileCount, concealedSummary, discardedSummary) {
   const reachableMap = new Map();
-  LOOP: for (const tile of concealedCounts.reduce((arr, c, t) => (c && arr.push(t), arr), [])) {
-    const rest = concealedCounts.slice();
-    rest[tile]--;
+  LOOP: for (const [s, r] of iterateSummary(concealedSummary)) {
+    const rest = concealedSummary.slice();
+    rest[s] = addDistributionFrequency(rest[s], r, -1);
     const winnableSet = new Set();
-    for (const combi of generateCombinations(rest)) {
+    for (const combi of generateCombinations(concealedTileCount - 1, rest, [])) {
       for (const t of combi[combi.length - 1]) {
-        if (discardedCounts[t]) {
+        if (getSummaryTileFrequency(discardedSummary, t)) {
           continue LOOP;
         }
-        if (concealedCounts[t] < 4) {
+        if (getSummaryTileFrequency(concealedSummary, t) < 4) {
           winnableSet.add(t);
         }
       }
     }
     if (winnableSet.size) {
-      reachableMap.set(tile, winnableSet);
+      reachableMap.set(getTile(s, r), winnableSet);
     }
   }
   return reachableMap;
@@ -308,7 +320,7 @@ export const HAND_ALL_TERMINALS = 21;
 export const HAND_FOUR_CLOSED_TRIPLETS = 22;
 export const HAND_NINE_GATES = 23;
 
-const HAND_DATA = new Map([
+export const HAND_DATA = new Map([
   [HAND_REACH, { name: 'Reach', score: 1 }],
   [HAND_DOUBLE_REACH, { name: 'Double Reach', score: 2 }],
   [HAND_ONESHOT, { name: 'One Shot', score: 1 }],
@@ -347,11 +359,11 @@ export function getHandScore(hand, dealCount) {
   }
 }
 
-export function getHands(readyCounts, winningTile, turnState, reachState, fromStock, restCount) {
+export function getHands(readyTileCount, readySummary, winningTile, turnState, reachState, fromStock, restCount) {
   const specialHands = [];
   let maxHands = [];
   let maxScore = 0;
-  for (const combi of generateCombinations(readyCounts)) {
+  for (const combi of generateCombinations(readyTileCount, readySummary, [])) {
     const winnableTiles = combi[combi.length - 1];
     if (!winnableTiles.includes(winningTile)) {
       continue;
@@ -363,16 +375,16 @@ export function getHands(readyCounts, winningTile, turnState, reachState, fromSt
       hands.push(HAND_SEVEN_TWINS);
       score += getHandScore(HAND_SEVEN_TWINS);
     } else {
-      const wait = combi[combi.length - 2];
+      const waitingTiles = combi[combi.length - 2];
       if (
-        isGroupSequential(wait) &&
-        !isGroupOutside(wait) &&
+        isGroupSequential(waitingTiles) &&
+        !isGroupOutside(waitingTiles) &&
         readyGroups.slice(0, readyGroups.length - 1).every((g) => isGroupSequential(g))
       ) {
         hands.push(HAND_ALL_SEQUENCES);
         score += getHandScore(HAND_ALL_SEQUENCES);
       }
-      const winningGroups = [getGroupFromWait(wait, winningTile), ...readyGroups];
+      const winningGroups = [getGroup(waitingTiles, winningTile), ...readyGroups];
       winningGroups.sort(compareGroups);
       if (winningGroups.every((g) => isGroupOutside(g))) {
         hands.push(HAND_ALL_OUTSIDE);
@@ -384,7 +396,7 @@ export function getHands(readyCounts, winningTile, turnState, reachState, fromSt
       }
       const tripletsCount =
         readyGroups.reduce((c, g) => c + (g.length >= 3 && isGroupIdentical(g) ? 1 : 0), 0) +
-        (fromStock && wait.length === 2 && isGroupIdentical(wait) ? 1 : 0);
+        (fromStock && waitingTiles.length === 2 && isGroupIdentical(waitingTiles) ? 1 : 0);
       if (tripletsCount === 3) {
         hands.push(HAND_THREE_CLOSED_TRIPLETS);
         score += getHandScore(HAND_THREE_CLOSED_TRIPLETS);
@@ -407,14 +419,14 @@ export function getHands(readyCounts, winningTile, turnState, reachState, fromSt
       }
       PS: for (let i = 1; i < winningGroups.length - 2; i++) {
         const g1 = winningGroups[i];
-        if (isGroupSequential(g1) && getTileRank(g1[0]) === 1) {
+        if (isGroupSequential(g1) && getTileRank(g1[0]) === R1) {
           const s1 = getTileSuit(g1[0]);
           for (let j = i + 1; j < winningGroups.length - 1; j++) {
             const g2 = winningGroups[j];
-            if (isGroupSequential(g2) && getTileRank(g2[0]) === 4 && getTileSuit(g2[0]) === s1) {
+            if (isGroupSequential(g2) && getTileRank(g2[0]) === R4 && getTileSuit(g2[0]) === s1) {
               for (let k = j + 1; k < winningGroups.length; k++) {
                 const g3 = winningGroups[k];
-                if (isGroupSequential(g3) && getTileRank(g3[0]) === 7 && getTileSuit(g3[0]) === s1) {
+                if (isGroupSequential(g3) && getTileRank(g3[0]) === R7 && getTileSuit(g3[0]) === s1) {
                   hands.push(HAND_PURE_STRAIGHT);
                   score += getHandScore(HAND_PURE_STRAIGHT);
                   break PS;
@@ -426,14 +438,14 @@ export function getHands(readyCounts, winningTile, turnState, reachState, fromSt
       }
       MTS: for (let i = 1; i < winningGroups.length - 2; i++) {
         const g1 = winningGroups[i];
-        if (isGroupSequential(g1) && getTileSuit(g1[0]) === 1) {
+        if (isGroupSequential(g1) && getTileSuit(g1[0]) === SA) {
           const r1 = getTileRank(g1[0]);
           for (let j = i + 1; j < winningGroups.length - 1; j++) {
             const g2 = winningGroups[j];
-            if (isGroupSequential(g2) && getTileSuit(g2[0]) === 2 && getTileRank(g2[0]) === r1) {
+            if (isGroupSequential(g2) && getTileSuit(g2[0]) === SB && getTileRank(g2[0]) === r1) {
               for (let k = j + 1; k < winningGroups.length; k++) {
                 const g3 = winningGroups[k];
-                if (isGroupSequential(g3) && getTileSuit(g3[0]) === 3 && getTileRank(g3[0]) === r1) {
+                if (isGroupSequential(g3) && getTileSuit(g3[0]) === SC && getTileRank(g3[0]) === r1) {
                   hands.push(HAND_MIXED_TRIPLE_SEQUENCES);
                   score += getHandScore(HAND_MIXED_TRIPLE_SEQUENCES);
                   break MTS;
@@ -445,14 +457,14 @@ export function getHands(readyCounts, winningTile, turnState, reachState, fromSt
       }
       MTT: for (let i = 1; i < winningGroups.length - 2; i++) {
         const g1 = winningGroups[i];
-        if (isGroupIdentical(g1) && getTileSuit(g1[0]) === 1) {
+        if (isGroupIdentical(g1) && getTileSuit(g1[0]) === SA) {
           const r1 = getTileRank(g1[0]);
           for (let j = i + 1; j < winningGroups.length - 1; j++) {
             const g2 = winningGroups[j];
-            if (isGroupIdentical(g2) && getTileSuit(g2[0]) === 2 && getTileRank(g2[0]) === r1) {
+            if (isGroupIdentical(g2) && getTileSuit(g2[0]) === SB && getTileRank(g2[0]) === r1) {
               for (let k = j + 1; k < winningGroups.length; k++) {
                 const g3 = winningGroups[k];
-                if (isGroupIdentical(g3) && getTileSuit(g3[0]) === 3 && getTileRank(g3[0]) === r1) {
+                if (isGroupIdentical(g3) && getTileSuit(g3[0]) === SC && getTileRank(g3[0]) === r1) {
                   hands.push(HAND_MIXED_TRIPLE_TRIPLETS);
                   score += getHandScore(HAND_MIXED_TRIPLE_TRIPLETS);
                   break MTT;
@@ -494,16 +506,25 @@ export function getHands(readyCounts, winningTile, turnState, reachState, fromSt
       maxHands.push(HAND_LAST_DISCARD);
     }
   }
-  const winningCounts = readyCounts.slice();
-  winningCounts[winningTile]++;
-  if (winningCounts.every((c, t) => !c || !isTileTerminal(t))) {
+  const winningSummary = readySummary.slice();
+  addSummaryTileFrequency(winningSummary, winningTile, 1);
+  const winningSuitRanks = [...iterateSummary(winningSummary)];
+  if (winningSuitRanks.every(([, r]) => !isRankTerminal(r))) {
     maxHands.push(HAND_ALL_MIDDLES);
-  } else if (winningCounts.every((c, t) => !c || isTileTerminal(t))) {
+  } else if (winningSuitRanks.every(([, r]) => isRankTerminal(r))) {
     specialHands.push(HAND_ALL_TERMINALS);
   }
   const suit = getTileSuit(winningTile);
-  if (readyCounts.every((c, t) => !c || getTileSuit(t) === suit)) {
-    if (RANKS.every((rank) => winningCounts[getTile(suit, rank)] >= [3, 1, 1, 1, 1, 1, 1, 1, 3][rank - 1])) {
+  if (winningSuitRanks.every(([s]) => s === suit)) {
+    const d = winningSummary[suit];
+    let nineGates = true;
+    for (let r = 0; r < RANK_COUNT; r++) {
+      if (getDistributionFrequency(d, r) < [3, 1, 1, 1, 1, 1, 1, 1, 3][r]) {
+        nineGates = false;
+        break;
+      }
+    }
+    if (nineGates) {
       specialHands.push(HAND_NINE_GATES);
     } else {
       maxHands.push(HAND_FULL_FLUSH);
@@ -518,11 +539,11 @@ export function getHands(readyCounts, winningTile, turnState, reachState, fromSt
 export class Base {
   constructor() {
     this.concealedTiles = [];
-    this.concealedCounts = EMPTY_TILE_COUNTS.slice();
+    this.concealedSummary = [0, 0, 0];
     this.discardedTiles = [];
-    this.discardedCounts = EMPTY_TILE_COUNTS.slice();
-    this.invisibleCounts = FULL_TILE_COUNTS.slice();
-    this.safeCounts = EMPTY_TILE_COUNTS.slice();
+    this.discardedSummary = [0, 0, 0];
+    this.invisibleSummary = [DISTRIBUTION_FULL, DISTRIBUTION_FULL, DISTRIBUTION_FULL];
+    this.safeSummary = [0, 0, 0];
     this.turnState = 0;
     this.reachState = 0;
     this.reachableMap = new Map();
@@ -572,7 +593,7 @@ export class Base {
 
   updateReachable() {
     if (!this.isStateReached() && !this.canWin()) {
-      this.reachableMap = getReachableMap(this.concealedCounts, this.discardedCounts);
+      this.reachableMap = getReachableMap(this.concealedTiles.length, this.concealedSummary, this.discardedSummary);
       this.reachState = this.reachableMap.size ? REACHABLE : 0;
     }
   }
@@ -588,14 +609,21 @@ export class Base {
       this.reachState = this.turnState ? DOUBLE_REACHED : REACHED;
       this.reachedDiscardedIndex = this.discardedTiles.length - 1;
       this.turnState = TURN_ONESHOT;
-      this.safeCounts = this.discardedCounts.slice();
+      this.safeSummary = this.discardedSummary.slice();
     } else {
       this.turnState = 0;
     }
   }
 
   updateWinnableSet() {
-    this.winnableSet = getWinnableSet(this.concealedCounts);
+    this.winnableSet = new Set();
+    for (const combi of generateCombinations(this.concealedTiles.length, this.concealedSummary, [])) {
+      for (const t of combi[combi.length - 1]) {
+        if (getSummaryTileFrequency(this.concealedSummary, t) < 4) {
+          this.winnableSet.add(t);
+        }
+      }
+    }
   }
 
   sortTiles() {
@@ -604,9 +632,9 @@ export class Base {
 
   deal(tiles) {
     this.concealedTiles = tiles;
-    this.concealedCounts = getTileCounts(this.concealedTiles);
-    for (const t of TILES) {
-      this.invisibleCounts[t] -= this.concealedCounts[t];
+    this.concealedSummary = getSummary(this.concealedTiles);
+    for (const [s, r, f] of iterateSummary(this.concealedSummary)) {
+      addSummaryTileFrequency(this.invisibleSummary, getTile(s, r), f);
     }
     this.updateWinnableSet();
     this.sortTiles();
@@ -614,22 +642,24 @@ export class Base {
 
   draw(tile) {
     this.concealedTiles.push(tile);
-    this.concealedCounts[tile]++;
-    this.invisibleCounts[tile]--;
+    addSummaryTileFrequency(this.concealedSummary, tile, 1);
+    addSummaryTileFrequency(this.invisibleSummary, tile, -1);
   }
 
   discard(tile) {
     this.discardedTiles.push(this.concealedTiles.splice(this.concealedTiles.lastIndexOf(tile), 1)[0]);
-    this.concealedCounts[tile]--;
-    this.discardedCounts[tile]++;
+    addSummaryTileFrequency(this.concealedSummary, tile, -1);
+    addSummaryTileFrequency(this.discardedSummary, tile, 1);
     this.updateReached();
     this.updateWinnableSet();
     this.sortTiles();
   }
 }
 
+const TILES_ALL = [...Array(TILE_COUNT).keys()];
+
 export function generateStockTiles(random) {
-  const stockTiles = [...TILES, ...TILES, ...TILES, ...TILES];
+  const stockTiles = [...TILES_ALL, ...TILES_ALL, ...TILES_ALL, ...TILES_ALL];
   random.shuffle(stockTiles);
   return stockTiles;
 }
@@ -653,7 +683,7 @@ export class Game {
     this.winnerIndex = -1;
     this.loserIndex = -1;
     this.readyTiles = null;
-    this.winningTile = 0;
+    this.winningTile = TILE_COUNT;
     this.winningHands = null;
     this.handsScore = 0;
   }
@@ -695,9 +725,9 @@ export class Game {
       if (p === this.currentPlayerIndex) {
         base.discard(tile);
       } else {
-        base.invisibleCounts[tile]--;
+        addSummaryTileFrequency(base.invisibleSummary, tile, -1);
         if (base.isStateReached()) {
-          base.safeCounts[tile]++;
+          addSummaryTileFrequency(base.safeSummary, tile, 1);
         }
       }
     }
@@ -724,7 +754,8 @@ export class Game {
       this.winningTile = winningTile;
     }
     this.winningHands = getHands(
-      getTileCounts(this.readyTiles),
+      this.readyTiles.length,
+      getSummary(this.readyTiles),
       this.winningTile,
       winnerBase.turnState,
       winnerBase.reachState,
@@ -748,13 +779,15 @@ export class Game {
   }
 }
 
-function think0(game) {
+function think1(game) {
   const base = game.getCurrentBase();
-  const tile = base.concealedCounts.findIndex((c) => c);
+  const tile = findSummaryTile(base.concealedSummary, (c) => c);
   return [tile, game.isRestReachable() && base.isTileReachable(tile)];
 }
 
-function think1(game) {
+const RANK_SCORES = [1, 2, 3, 4, 4, 4, 3, 2, 1];
+
+function think2(game) {
   const base = game.getCurrentBase();
   if (game.isRestReachable() && base.isStateReachable()) {
     let maxCount = 0;
@@ -769,38 +802,34 @@ function think1(game) {
   }
   let minScore = Number.MAX_SAFE_INTEGER;
   let minTile = 0;
-  const rankScores = [0, 1, 2, 3, 4, 4, 4, 3, 2, 1];
-  for (const tile of TILES) {
-    if (!base.concealedCounts[tile]) {
-      continue;
-    }
-    const rank = getTileRank(tile);
-    let score = base.concealedCounts[tile] * 10 + rankScores[rank];
-    if (rank >= 2) {
-      if (base.concealedCounts[tile - 1]) {
+  for (const [s, r, f] of iterateSummary(base.concealedSummary)) {
+    const t = getTile(s, r);
+    let score = f * 10 + RANK_SCORES[r];
+    if (r >= R2) {
+      if (getSummaryTileFrequency(base.concealedSummary, t - 1)) {
         score += 10;
       }
-      if (rank >= 3 && base.concealedCounts[tile - 2]) {
+      if (r >= R3 && getSummaryTileFrequency(base.concealedSummary, t - 2)) {
         score += 5;
       }
     }
-    if (rank <= 8) {
-      if (base.concealedCounts[tile + 1]) {
+    if (r <= R8) {
+      if (getSummaryTileFrequency(base.concealedSummary, t + 1)) {
         score += 10;
       }
-      if (rank <= 7 && base.concealedCounts[tile + 2]) {
+      if (r <= R7 && getSummaryTileFrequency(base.concealedSummary, t + 2)) {
         score += 5;
       }
     }
     if (score < minScore) {
       minScore = score;
-      minTile = tile;
+      minTile = t;
     }
   }
   return [minTile, false];
 }
 
-function think2(game) {
+function think3(game) {
   const base = game.getCurrentBase();
   if (game.isRestReachable() && base.isStateReachable()) {
     let maxScore = 0;
@@ -808,8 +837,9 @@ function think2(game) {
     for (const [tile, winnableSet] of base.reachableMap) {
       let score = 0;
       for (const t of winnableSet) {
-        if (base.invisibleCounts[t]) {
-          score += 10 + base.invisibleCounts[t];
+        const count = getSummaryTileFrequency(base.invisibleSummary, t);
+        if (count) {
+          score += 10 + count;
         }
       }
       if (score > maxScore) {
@@ -823,43 +853,113 @@ function think2(game) {
   }
   let minScore = Number.MAX_SAFE_INTEGER;
   let minTile = 0;
-  const rankScores = [0, 1, 2, 3, 4, 4, 4, 3, 2, 1];
-  for (const tile of TILES) {
-    if (!base.concealedCounts[tile]) {
-      continue;
-    }
-    const rank = getTileRank(tile);
-    let score = base.concealedCounts[tile] * 10 + rankScores[rank];
+  for (const [s, r, f] of iterateSummary(base.concealedSummary)) {
+    const t = getTile(s, r);
+    let score = f * 10 + RANK_SCORES[r];
     for (let i = 1; i < game.playerCount; i++) {
-      if (game.bases[(game.currentPlayerIndex + i) % game.playerCount].safeCounts[tile]) {
+      if (getSummaryTileFrequency(game.bases[(game.currentPlayerIndex + i) % game.playerCount].safeSummary, t)) {
         score -= 20;
       }
     }
-    if (rank >= 2) {
-      if (base.concealedCounts[tile - 1]) {
+    if (r >= R2) {
+      if (getSummaryTileFrequency(base.concealedSummary, t - 1)) {
         score += 10;
       }
-      if (rank >= 3 && base.concealedCounts[tile - 2]) {
+      if (r >= R3 && getSummaryTileFrequency(base.concealedSummary, t - 2)) {
         score += 5;
       }
     }
-    if (rank <= 8) {
-      if (base.concealedCounts[tile + 1]) {
+    if (r <= R8) {
+      if (getSummaryTileFrequency(base.concealedSummary, t + 1)) {
         score += 10;
       }
-      if (rank <= 7 && base.concealedCounts[tile + 2]) {
+      if (r <= R7 && getSummaryTileFrequency(base.concealedSummary, t + 2)) {
         score += 5;
       }
     }
     if (score < minScore) {
       minScore = score;
-      minTile = tile;
+      minTile = t;
     }
   }
   return [minTile, false];
 }
 
-export const THINKS = [think0, think1, think2];
+function getThink4(engine) {
+  return (game) => {
+    const base = game.getCurrentBase();
+    if (game.isRestReachable() && base.isStateReachable()) {
+      let maxScore = 0;
+      let maxTile = 0;
+      for (const [tile, winnableSet] of base.reachableMap) {
+        let score = 0;
+        for (const t of winnableSet) {
+          const count = getSummaryTileFrequency(base.invisibleSummary, t);
+          if (count) {
+            score += 10 + count;
+          }
+        }
+        if (score > maxScore) {
+          maxScore = score;
+          maxTile = tile;
+        }
+      }
+      if (maxTile) {
+        return [maxTile, true];
+      }
+    }
+    let minScore = Number.MAX_SAFE_INTEGER;
+    let minTile = 0;
+    const targetCount = base.concealedTiles.length;
+    for (const [s, r, f] of iterateSummary(base.concealedSummary)) {
+      const t = getTile(s, r);
+      const targetDistribution = base.concealedSummary.slice();
+      addSummaryTileFrequency(targetDistribution, t, -1);
+      const norm = engine.solveWinnableNorm(targetCount, targetDistribution);
+      let score = 100 * norm + 10 * f + RANK_SCORES[r];
+      const dscore = norm > 2 ? 120 : 80;
+      for (let i = 1; i < game.playerCount; i++) {
+        if (getSummaryTileFrequency(game.bases[(game.currentPlayerIndex + i) % game.playerCount].safeSummary, t)) {
+          score -= dscore;
+        }
+      }
+      if (r >= R2) {
+        if (getSummaryTileFrequency(targetDistribution, t - 1)) {
+          score += 10;
+        }
+        if (r >= R3 && getSummaryTileFrequency(targetDistribution, t - 2)) {
+          score += 5;
+        }
+      }
+      if (r <= R8) {
+        if (getSummaryTileFrequency(targetDistribution, t + 1)) {
+          score += 10;
+        }
+        if (r <= R7 && getSummaryTileFrequency(targetDistribution, t + 2)) {
+          score += 5;
+        }
+      }
+      if (score < minScore) {
+        minScore = score;
+        minTile = t;
+      }
+    }
+    return [minTile, false];
+  };
+}
+
+export function getThink(engine, level) {
+  switch (level) {
+    case 1:
+      return think1;
+    case 2:
+      return think2;
+    case 3:
+      return think3;
+    default:
+      return getThink4(engine);
+  }
+}
 
 export class Match {
   constructor(playerCount, dealCount, roundCount, seed) {
