@@ -2,16 +2,6 @@ export function randomInt(n) {
   return Math.floor(n * Math.random());
 }
 
-export function shuffleArray(arr, len) {
-  let i = len || arr.length;
-  while (i) {
-    const j = randomInt(i);
-    const t = arr[--i];
-    arr[i] = arr[j];
-    arr[j] = t;
-  }
-}
-
 export function randomSeed() {
   return randomInt(2 ** 32) | 0;
 }
@@ -37,13 +27,14 @@ export class XorshiftRandom {
     return (this.next() >>> 0) % n;
   }
 
-  shuffle(arr, len) {
-    let i = len || arr.length;
-    while (i) {
-      const j = this.nextInt(i);
-      const t = arr[--i];
-      arr[i] = arr[j];
-      arr[j] = t;
+  shuffle(arr) {
+    for (let i = arr.length; i > 1; ) {
+      const r = this.nextInt(i--);
+      [arr[i], arr[r]] = [arr[r], arr[i]];
     }
   }
+}
+
+export function shuffleArray(arr) {
+  new XorshiftRandom(randomSeed()).shuffle(arr);
 }
