@@ -13,8 +13,9 @@ import {
   SC,
   TILE_COUNT,
 } from './lib';
-import { randomInt, randomSeed, shuffleArray } from './random';
+import { randomSeed } from './random';
 import { initEngine } from './engine_browser';
+import { randomInt, shuffle } from 'jshuffle';
 
 function on(target, type, listner) {
   target.addEventListener(type, (ev) => {
@@ -690,10 +691,9 @@ on(window, 'DOMContentLoaded', async () => {
 
   function doStart() {
     manualPlayerIndex = randomInt(settings.playerCount);
-    playerNames = PLAYER_NAMES.slice(1);
-    shuffleArray(playerNames);
-    playerNames = playerNames.slice(0, settings.playerCount - 1);
-    playerNames.splice(manualPlayerIndex, 0, PLAYER_NAMES[0]);
+    playerNames = shuffle(PLAYER_NAMES.slice(1))
+      .slice(0, settings.playerCount - 1)
+      .toSpliced(manualPlayerIndex, 0, PLAYER_NAMES[0]);
     match = new Match(settings.playerCount, settings.dealCount, settings.roundCount, randomSeed());
     match.startGame();
     playerPositions = Array(match.playerCount);

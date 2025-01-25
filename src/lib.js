@@ -1,3 +1,4 @@
+import { shuffle } from 'jshuffle';
 import { XorshiftRandom } from './random.js';
 
 export const SA = 0;
@@ -659,9 +660,7 @@ export class Base {
 const TILES_ALL = [...Array(TILE_COUNT).keys()];
 
 export function generateStockTiles(random) {
-  const stockTiles = [...TILES_ALL, ...TILES_ALL, ...TILES_ALL, ...TILES_ALL];
-  random.shuffle(stockTiles);
-  return stockTiles;
+  return shuffle([...TILES_ALL, ...TILES_ALL, ...TILES_ALL, ...TILES_ALL], (n) => random.nextInt(n));
 }
 
 export class Game {

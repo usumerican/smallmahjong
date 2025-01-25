@@ -1,6 +1,4 @@
-export function randomInt(n) {
-  return Math.floor(n * Math.random());
-}
+import { randomInt } from 'jshuffle';
 
 export function randomSeed() {
   return randomInt(2 ** 32) | 0;
@@ -26,15 +24,4 @@ export class XorshiftRandom {
   nextInt(n = 2 ** 32) {
     return (this.next() >>> 0) % n;
   }
-
-  shuffle(arr) {
-    for (let i = arr.length; i > 1; ) {
-      const r = this.nextInt(i--);
-      [arr[i], arr[r]] = [arr[r], arr[i]];
-    }
-  }
-}
-
-export function shuffleArray(arr) {
-  new XorshiftRandom(randomSeed()).shuffle(arr);
 }

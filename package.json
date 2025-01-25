@@ -1,6 +1,6 @@
 {
   "name": "smallmahjong",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "type": "module",
   "license": "AGPL-3.0",
   "author": "usumerican",
@@ -22,5 +22,8 @@
     "prettier": "^3.3.3",
     "vite": "^5.4.4",
     "vitest": "^2.0.5"
+  },
+  "dependencies": {
+    "jshuffle": "^0.1.0"
   }
 }
