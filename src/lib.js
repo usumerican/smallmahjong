@@ -1,4 +1,4 @@
-import { shuffle } from 'jshuffle';
+import { makeShuffle } from 'jshuffle';
 import { XorshiftRandom } from './random.js';
 
 export const SA = 0;
@@ -660,7 +660,7 @@ export class Base {
 const TILES_ALL = [...Array(TILE_COUNT).keys()];
 
 export function generateStockTiles(random) {
-  return shuffle([...TILES_ALL, ...TILES_ALL, ...TILES_ALL, ...TILES_ALL], (n) => random.nextInt(n));
+  return makeShuffle(() => (random.next() >>> 0) / 2 ** 32)([...TILES_ALL, ...TILES_ALL, ...TILES_ALL, ...TILES_ALL]);
 }
 
 export class Game {

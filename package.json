@@ -1,6 +1,6 @@
 {
   "name": "smallmahjong",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "type": "module",
   "license": "AGPL-3.0",
   "author": "usumerican",
@@ -17,13 +17,13 @@
     "build": "vite build",
     "preview": "vite preview"
   },
-  "devDependencies": {
-    "eslint": "^9.10.0",
-    "prettier": "^3.3.3",
-    "vite": "^5.4.4",
-    "vitest": "^2.0.5"
-  },
   "dependencies": {
-    "jshuffle": "^0.1.0"
+    "jshuffle": "^0.3.0"
+  },
+  "devDependencies": {
+    "eslint": "^9.21.0",
+    "prettier": "^3.5.2",
+    "vite": "^6.2.0",
+    "vitest": "^3.0.7"
   }
 }
